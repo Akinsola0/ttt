@@ -732,6 +732,195 @@
     if (e.key === " ") { e.preventDefault(); tpToggle(); }
   });
 
+  // ------------------------------------------------------------------ SCRIPT DOCTOR
+  const { STYLES } = window.KB;
+  const R = window.Rewrite;
+  const EXAMPLE_DRAFT = "Hey guys, welcome back to the channel! In this video we're going to talk about honey. Honey is basically a really interesting food. Archaeologists found honey in Egyptian tombs and it was still edible.\n\nHoney has very low water content and it is acidic. And then bees also add an enzyme which makes hydrogen peroxide. And then that is why bacteria can't grow in it. Also honey is very sweet because it is mostly sugar, so microbes basically dry out when they touch it.\n\nSo that's basically why honey doesn't go bad. Don't forget to like and subscribe, thanks for watching!";
+  // The page can ask Claude only inside a Claude viewer; elsewhere this resolves null.
+  const sampleReady = (window.claude && typeof window.claude.use === "function")
+    ? window.claude.use("sample").catch(() => null)
+    : Promise.resolve(null);
+  let sampleFn = null;
+  let docCtl = null;
+  sampleReady.then((fn) => { sampleFn = fn; });
+
+  function doc() {
+    if (!state.doctor) {
+      state.doctor = { topic: "Why honey never spoils", audience: "", minutes: 6, wpm: 150, style: "auto", template: "auto", text: EXAMPLE_DRAFT, isExample: true, result: null };
+    }
+    return state.doctor;
+  }
+  $("#docStyle").innerHTML = STYLES.map((s) => `<option value="${s.id}">${esc(s.name)} · ${esc(s.inspired)}</option>`).join("");
+  $("#docTemplate").innerHTML = `<option value="auto">Auto (match the writer style)</option>` + TEMPLATES.filter((t) => t.id !== "blank").map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
+
+  function docInputs() {
+    const d = doc();
+    $("#docTopic").value = d.topic || "";
+    $("#docAudience").value = d.audience || "";
+    $("#docMinutes").value = d.minutes;
+    $("#docWpm").value = d.wpm;
+    $("#docStyle").value = d.style;
+    $("#docTemplate").value = d.template;
+    $("#docText").value = d.text || "";
+    $("#docExampleNote").hidden = !d.isExample;
+    docStyleInfo();
+  }
+  function docStyleInfo() {
+    const st = STYLES.find((s) => s.id === $("#docStyle").value) || STYLES[0];
+    $("#docStyleInfo").textContent = st.summary;
+  }
+  [["#docTopic", "topic"], ["#docAudience", "audience"]].forEach(([sel, k]) =>
+    $(sel).addEventListener("input", (e) => { doc()[k] = e.target.value; persist(); }));
+  $("#docMinutes").addEventListener("input", (e) => { doc().minutes = Math.min(60, Math.max(1, +e.target.value || 6)); persist(); });
+  $("#docWpm").addEventListener("input", (e) => { doc().wpm = Math.min(220, Math.max(80, +e.target.value || 150)); persist(); docReport(); });
+  $("#docStyle").addEventListener("change", (e) => { doc().style = e.target.value; persist(); docStyleInfo(); });
+  $("#docTemplate").addEventListener("change", (e) => { doc().template = e.target.value; persist(); });
+  $("#docText").addEventListener("input", (e) => {
+    const d = doc();
+    d.text = e.target.value;
+    if (d.isExample) { d.isExample = false; $("#docExampleNote").hidden = true; }
+    persist(); docReportDebounced();
+  });
+
+  function docAnalysis() { const d = doc(); return A.analyze(d.text || "", { wpm: d.wpm }); }
+
+  function docReport() {
+    const r = docAnalysis();
+    const box = $("#docReport");
+    if (r.empty) { box.innerHTML = `<p class="muted">Paste a script to see its retention check.</p>`; return; }
+    const sc = r.scores, m = r.metrics;
+    box.innerHTML = `
+      <div class="mini-rings">${ring(sc.overall, "Overall") + ring(sc.hook, "Hook") + ring(sc.momentum, "Momentum") + ring(sc.clarity, "Clarity") + ring(sc.engagement, "Engagement")}</div>
+      <div class="mini-metrics">
+        <span><b>${r.runtimeLabel}</b> runtime</span><span><b>${r.totalWords}</b> words</span>
+        <span><b>${m.rehooks}</b> re-hooks</span><span><b>${m.longestGap}s</b> longest gap</span>
+        <span><b>${m.questions}</b> questions</span><span><b>${m.andThen}</b> “and then”</span>
+        <span><b>${m.examples}</b> examples</span><span><b>${m.readability}</b> readability</span>
+      </div>
+      ${r.issues.length ? r.issues.map((x) => `<div class="issue ${x.severity}"><div class="h"><span>${esc(x.title)}</span><span class="tag">${esc(x.area)} · ${x.severity}</span></div><p>${esc(x.detail)}</p></div>`).join("")
+        : `<p class="good-news">No major issues found. The rewrite can still sharpen the story and structure.</p>`}`;
+  }
+  const docReportDebounced = debounce(docReport, 300);
+
+  function docPrompt() {
+    const d = doc();
+    return R.buildPrompt({ text: d.text, topic: d.topic, audience: d.audience, minutes: d.minutes, wpm: d.wpm, styleId: d.style, templateId: d.template, analysis: docAnalysis() });
+  }
+
+  function scriptHtml(sections, streaming) {
+    if (!sections.length) return `<p class="streaming">${streaming ? "Thinking… a full script usually takes 30–90 seconds." : ""}</p>`;
+    return sections.map((s) => `<h4>${esc(s.title)}</h4>` + s.text.split(/\n{2,}/).map((para) =>
+      `<p>${esc(para)
+        .replace(/\[CHECK:([^\]]*)\]/g, '<span class="chk">⚠ Check:$1</span>')
+        .replace(/\[([^\]]*)\]/g, '<span class="vn">[$1]</span>')
+        .replace(/\n/g, "<br/>")}</p>`).join("")).join("");
+  }
+
+  function renderDocResult(raw, streaming) {
+    const card = $("#docResultCard");
+    card.hidden = false;
+    const p = R.parse(raw || "");
+    $("#docScript").innerHTML = scriptHtml(p.sections, streaming);
+    $("#docPackaging").innerHTML =
+      (p.titles.length ? `<h4>Title options</h4><ol>${p.titles.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : "") +
+      (p.thumbnail ? `<h4>Thumbnail idea</h4><ul><li>${esc(p.thumbnail)}</li></ul>` : "");
+    $("#docChanges").innerHTML = p.changes.length ? `<h4>What changed</h4><ul>${p.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : "";
+    const checks = (raw || "").match(/\[CHECK:/g);
+    if (!streaming && checks) $("#docChanges").innerHTML += `<p class="notice">⚠ ${checks.length} fact(s) are marked “Check”. Verify them before you record.</p>`;
+    const busy = !!streaming;
+    ["#docOpen", "#docCopy", "#docAgain"].forEach((sel) => ($(sel).disabled = busy || !p.sections.length));
+    if (!streaming && p.sections.length) {
+      const before = docAnalysis();
+      const d = doc();
+      const after = A.analyze(p.sections, { wpm: d.wpm });
+      const rows = [["Overall", "overall"], ["Hook", "hook"], ["Momentum", "momentum"], ["Clarity", "clarity"], ["Engagement", "engagement"]];
+      $("#docCompare").innerHTML = rows.map(([l, k]) => {
+        const diff = after.scores[k] - (before.empty ? 0 : before.scores[k]);
+        return `<div class="cmp">${l}: ${before.empty ? "–" : before.scores[k]} → <b class="${gradeClass(after.scores[k])}">${after.scores[k]}</b> ${diff ? `<span class="${diff > 0 ? "up" : "down"}">${diff > 0 ? "+" : ""}${diff}</span>` : ""}</div>`;
+      }).join("") + `<div class="cmp">Runtime: <b>${after.runtimeLabel}</b> · ${after.totalWords} words</div>`;
+    } else {
+      $("#docCompare").innerHTML = "";
+    }
+  }
+
+  const ERR = {
+    not_granted: "Claude wasn't allowed for this page. Use “Copy rewrite prompt” and paste it into a Claude chat instead.",
+    sampling_disabled: "Claude isn't available for this account here. Use “Copy rewrite prompt” and paste it into a Claude chat instead.",
+    rate_limited: "You've hit a usage limit for now. Wait a bit, then try again.",
+    session_expired: "Your Claude session expired. Sign in again, then try again.",
+    prompt_too_large: "That draft is too long to rewrite in one go. Paste one part at a time.",
+    refused: "Claude declined this draft. Try rewording it.",
+    empty_completion: "Claude returned nothing. Try again, perhaps with a shorter draft.",
+  };
+
+  async function docWrite(fresh) {
+    const d = doc();
+    if (!(d.text || "").trim()) { toast("Paste a script or notes first"); return; }
+    const fn = sampleFn || (await sampleReady);
+    if (!fn) {
+      $("#docStatus").innerHTML = "Writing the finished version needs Claude. That works when you open this app from its claude.ai link. Here, click <b>Copy rewrite prompt</b> and paste it into a Claude chat. It contains all the rules and your draft.";
+      return;
+    }
+    docCtl = new AbortController();
+    $("#docWrite").disabled = true;
+    $("#docStop").hidden = false;
+    $("#docStatus").textContent = "Writing your finished script…";
+    renderDocResult("", true);
+    $("#docResultCard").scrollIntoView({ behavior: "smooth", block: "start" });
+    try {
+      const opts = { signal: docCtl.signal, onText: ({ text }) => renderDocResult(text, true) };
+      if (fresh) opts.cache = false;
+      const { text, truncated } = await fn(docPrompt(), opts);
+      d.result = text; persist();
+      renderDocResult(text, false);
+      $("#docStatus").textContent = truncated ? "The answer was cut short. Try a shorter target length." : "Done. Review it, then open it in the editor to polish and record.";
+    } catch (e) {
+      if (e && e.text) { d.result = e.text; renderDocResult(e.text, false); }
+      else if (!d.result) $("#docResultCard").hidden = true;
+      else renderDocResult(d.result, false);
+      $("#docStatus").textContent = e && e.code === "cancelled" ? "Stopped." : (ERR[e && e.code] || "Something went wrong while writing. Try again.");
+    } finally {
+      $("#docWrite").disabled = false;
+      $("#docStop").hidden = true;
+      docCtl = null;
+    }
+  }
+  $("#docWrite").addEventListener("click", () => docWrite(false));
+  $("#docAgain").addEventListener("click", () => docWrite(true));
+  $("#docStop").addEventListener("click", () => docCtl && docCtl.abort());
+  $("#docCopyPrompt").addEventListener("click", () => {
+    if (!(doc().text || "").trim()) { toast("Paste a script or notes first"); return; }
+    copy(docPrompt());
+  });
+  $("#docCopy").addEventListener("click", () => {
+    const p = R.parse(doc().result || "");
+    copy(p.sections.map((s) => "## " + s.title + "\n\n" + s.text).join("\n\n"));
+  });
+  $("#docOpen").addEventListener("click", () => {
+    const d = doc();
+    const p = R.parse(d.result || "");
+    if (!p.sections.length) return;
+    const st = STYLES.find((s) => s.id === d.style) || STYLES[0];
+    const tid = d.template === "auto" ? st.template : d.template;
+    const proj = newProject(tid, (d.topic || p.titles[0] || "Finished script").slice(0, 80));
+    proj.targetMin = d.minutes; proj.wpm = d.wpm;
+    proj.meta = { topic: d.topic || "", title: p.titles[0] || "", thumb: p.thumbnail || "", promise: "", question: "" };
+    const total = p.sections.reduce((a, s) => a + A.words(A.stripVisualNotes(s.text)).length, 0) || 1;
+    proj.sections = p.sections.map((s) => ({
+      id: uid(), title: s.title, purpose: "", prompts: [], text: s.text,
+      pct: Math.max(1, Math.round((A.words(A.stripVisualNotes(s.text)).length / total) * 100)),
+    }));
+    state.projects.push(proj); state.currentId = proj.id; persist();
+    renderAll(); showTab("write");
+    toast("Opened as a new script");
+  });
+
+  function renderDoctor() {
+    docInputs();
+    docReport();
+    if (doc().result) renderDocResult(doc().result, false);
+  }
+
   // ------------------------------------------------------------------ boot
   function renderAll() {
     renderProjectSelect();
@@ -741,6 +930,7 @@
     if (active === "story") renderStory();
     if (active === "playbook") renderChecklist();
   }
+  renderDoctor();
   renderHookTypes();
   renderHookBuilder();
   renderPlaybook();

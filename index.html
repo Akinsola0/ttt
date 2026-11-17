@@ -34,7 +34,8 @@
   </header>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="write" class="active">✍️ Write</button>
+    <button role="tab" data-tab="doctor" class="active">🩺 Script Doctor</button>
+    <button role="tab" data-tab="write">✍️ Write</button>
     <button role="tab" data-tab="analyze">📈 Retention Analyzer</button>
     <button role="tab" data-tab="hooks">🪝 Hook Lab</button>
     <button role="tab" data-tab="story">🧭 Story Tools</button>
@@ -43,7 +44,63 @@
 
   <main>
     <!-- WRITE -->
-    <section id="tab-write" class="tab-panel active">
+    <!-- DOCTOR -->
+    <section id="tab-doctor" class="tab-panel active">
+      <div class="doctor-intro">
+        <h2>Paste a script. Get it diagnosed. Get it finished.</h2>
+        <p class="muted">Paste a draft, rough notes or an outline. You get an instant retention check, then a finished, ready-to-record version that applies the hook, structure, teaching and storytelling rules from the Playbook.</p>
+      </div>
+      <div class="doctor-layout">
+        <div class="card">
+          <h3>1 · Your draft</h3>
+          <div class="row2">
+            <label>Topic<input id="docTopic" type="text" placeholder="e.g. Why honey never spoils" /></label>
+            <label>Audience<input id="docAudience" type="text" placeholder="e.g. curious teens and adults" /></label>
+          </div>
+          <div class="row2">
+            <label>Target length (min)<input id="docMinutes" type="number" min="1" max="60" step="1" /></label>
+            <label>Speaking pace (wpm)<input id="docWpm" type="number" min="80" max="220" step="5" /></label>
+          </div>
+          <label>Writer style<select id="docStyle"></select></label>
+          <p id="docStyleInfo" class="muted small style-info"></p>
+          <label>Structure<select id="docTemplate"></select></label>
+          <label>Script, draft or notes
+            <textarea id="docText" rows="14" placeholder="Paste your script here…"></textarea>
+          </label>
+          <p id="docExampleNote" class="muted small" hidden>This is an example draft so you can see how the Doctor works. Replace it with your own.</p>
+          <div class="doc-actions">
+            <button class="btn primary" id="docWrite">✦ Write finished version</button>
+            <button class="btn" id="docStop" hidden>Stop</button>
+            <button class="btn ghost" id="docCopyPrompt" title="Copy the full rewrite instructions to paste into a Claude chat">Copy rewrite prompt</button>
+          </div>
+          <p id="docStatus" class="muted small" aria-live="polite"></p>
+        </div>
+        <div class="card">
+          <h3>2 · Diagnosis of your draft</h3>
+          <div id="docReport"><p class="muted">Paste a script to see its retention check.</p></div>
+        </div>
+      </div>
+      <div class="card" id="docResultCard" hidden>
+        <div class="result-head">
+          <h3>3 · Finished version</h3>
+          <div class="doc-actions">
+            <button class="btn primary" id="docOpen">Open in editor</button>
+            <button class="btn" id="docCopy">Copy script</button>
+            <button class="btn" id="docAgain">Write another version</button>
+          </div>
+        </div>
+        <div id="docCompare" class="compare"></div>
+        <div class="result-grid">
+          <div id="docScript" class="doc-script"></div>
+          <aside class="result-side">
+            <div id="docPackaging"></div>
+            <div id="docChanges"></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-write" class="tab-panel">
       <div class="write-layout">
         <aside class="sidebar">
           <div class="card">
@@ -237,6 +294,7 @@
 
   <script src="js/knowledge.js"></script>
   <script src="js/analyzer.js"></script>
+  <script src="js/rewrite.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

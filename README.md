@@ -8,12 +8,23 @@ No install and no internet needed. Open `index.html` in any browser. Your script
 
 | Tab | What it does |
 |---|---|
+| **🩺 Script Doctor** | Paste any draft, notes or outline. You get an instant retention diagnosis (hook, momentum, clarity, engagement, with fixes). Then **Write finished version** rewrites it into a ready-to-record script using the rules, a structure template and a writer style. You also get title and thumbnail ideas, before/after scores, a list of what changed, and facts flagged for checking. Open the result in the editor with one click. Writing needs Claude: it works when the app is opened from its claude.ai link. Opened as a local file, use **Copy rewrite prompt** and paste it into a Claude chat. |
 | **✍️ Write** | Section-by-section editor driven by a structure template. Each section has a purpose, writing prompts, a word count and a time target. Also includes a packaging panel (title, thumbnail, promise, main question), an outline with timings and a live retention score. Put visual / B-roll notes in `[brackets]`: they're kept in exports but not counted as spoken words. |
 | **📈 Retention Analyzer** | Scores Hook, Momentum, Clarity and Engagement. Shows a sentence-by-sentence **retention timeline** with re-hook markers and red bands where the viewer goes too long without a new question or twist. Lists fixes in priority order and shows an annotated script. |
 | **🪝 Hook Lab** | 8 hook types (cold open, misconception, curiosity question, stakes, shocking number, result preview, confession, "imagine"). Each one explains why it works, gives an example and a fill-in generator, and lets you insert a hook into your script with one click. Also has a **hook tester** that scores any opening against the first-15-seconds rules. |
 | **🧭 Story Tools** | **ABT builder** (And / But / Therefore), **Beat Chain** (flags "and then" links), **Misconception Planner** (turns a myth into script sections) and a bank of re-hook / transition lines. |
 | **📚 Playbook** | 30 research-backed principles in six themes, each linked to its source, plus a per-script pre-flight checklist. |
 | **▶ Teleprompter** | Full-screen scrolling prompter with adjustable speed and size, mirror mode and optional visual notes. Space = play/pause, Esc = close. |
+
+### Writer styles (Script Doctor)
+These styles describe techniques drawn from interviews and breakdowns. They don't imitate anyone's voice.
+- **Curious Investigator** (Veritasium-style): misconception first, questions before answers, A-plot/B-plot.
+- **Detective Documentary** (Johnny Harris-style): first-person investigation, strange visual opener, show then ask.
+- **Engineer's Thriller** (Mark Rober-style): focus on the feeling, hide the vegetables, failures as BUT beats, set up a rhythm and break it.
+- **Big-Picture Explainer** (Kurzgesagt-style): visceral stakes, scale comparisons, hopeful zoom-out.
+- **Straight-to-the-Problem Analyst** (Wendover-style): inverted pyramid, data and trade-offs.
+- **One-Take Storyteller** (Tom Scott-style): dense, precise, anchored to a real place or object.
+- **High-Energy Stakes** (MrBeast-guide style): escalation every 60–90 s, constant re-hooks.
 
 ### Structure templates
 1. **Educational Story (Misconception-first).** The best all-rounder for teaching plus storytelling.
@@ -56,4 +67,4 @@ npm test        # analyzer unit tests (Node 18+)
 npm start       # optional: serve on http://localhost:8080
 ```
 
-Files: `index.html`, `css/styles.css`, `js/knowledge.js` (templates, hooks, playbook, sources), `js/analyzer.js` (pure retention analysis that runs in the browser and in Node), `js/app.js` (UI).
+Files: `index.html`, `css/styles.css`, `js/knowledge.js` (templates, hooks, writer styles, playbook, sources), `js/rewrite.js` (rewrite prompt builder and answer parser), `js/analyzer.js` (pure retention analysis that runs in the browser and in Node), `js/app.js` (UI).

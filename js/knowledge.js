@@ -413,7 +413,161 @@
     voiceover: { name: "The eLearning Coach — The Art of Writing Great Voice-Over Scripts", url: "https://theelearningcoach.com/elearning_design/the-art-of-writing-great-voice-over-scripts/" },
   };
 
-  const KB = { TEMPLATES, HOOKS, PLAYBOOK, CHECKLIST, SOURCES };
+  // ---------------------------------------------------------------------------
+  // Writer style profiles: what top educational / story channels do, distilled
+  // from interviews and third-party breakdowns. Used to steer the rewrite.
+  // These describe techniques, not anyone's exact voice.
+  // ---------------------------------------------------------------------------
+  const STYLES = [
+    {
+      id: "auto",
+      name: "Best fit for my topic",
+      inspired: "Mix of all below",
+      summary: "Picks the techniques that suit your topic: misconception-first for science, investigation for history or geopolitics, a character journey for biographies.",
+      rules: [
+        "Choose the most suitable techniques from the other style profiles for this topic and audience.",
+      ],
+      template: "edu-story",
+    },
+    {
+      id: "investigator",
+      name: "Curious Investigator",
+      inspired: "Veritasium-style science storytelling",
+      summary: "Starts with what people wrongly believe, asks questions before giving answers, runs a human A-plot beside the science B-plot.",
+      rules: [
+        "Open by surfacing a common misconception and make the viewer commit to a guess.",
+        "Ask the question and let it hang before answering; reveal through experiment or evidence.",
+        "Run a human story (a scientist, an accident, a discovery) alongside the explanation and cut between them.",
+        "Explicitly contrast the wrong mental model with the right one.",
+      ],
+      src: ["muller", "veritasium-summary"],
+      template: "edu-story",
+    },
+    {
+      id: "detective",
+      name: "Detective Documentary",
+      inspired: "Johnny Harris-style visual investigation",
+      summary: "First-person investigation. Shows a strange map, image or document and works through clues with the viewer.",
+      rules: [
+        "Open on a strange, specific visual (a map, a photo, a document) and ask what is going on.",
+        "Narrate as a first-person investigator: 'So I started digging…', 'This is where it got weird.'",
+        "Show evidence, then ask; never just announce conclusions.",
+        "Write a visual note in [brackets] for nearly every line; front-load visual anchors in the first 30–60 seconds.",
+      ],
+      src: ["harris-detective", "harris-process"],
+      template: "detective",
+    },
+    {
+      id: "engineer",
+      name: "Engineer's Thriller",
+      inspired: "Mark Rober-style build-and-test stories",
+      summary: "The science is the reward, not the price of entry. Builds suspense through attempts, failures and reveals, and aims for a feeling.",
+      rules: [
+        "Focus on the feeling: decide the emotion the viewer should leave with and build toward it.",
+        "Hide the vegetables: wrap the science inside an entertaining goal, and explain it at the moment it pays off.",
+        "Show attempts that fail and what was learned; each failure is a BUT that motivates the next try.",
+        "Set up a rhythm, then break it with a surprise.",
+        "Give names and personality to characters, even objects or animals.",
+      ],
+      src: ["rober-storyrules", "rober-stanford"],
+      template: "character",
+    },
+    {
+      id: "bigpicture",
+      name: "Big-Picture Explainer",
+      inspired: "Kurzgesagt-style science explainers",
+      summary: "Calm, clear narrator, concrete scale comparisons and visceral stakes, ending on a zoomed-out, meaningful takeaway.",
+      rules: [
+        "Lead with immediate, visceral stakes (your body, your planet, your survival) rather than abstract ideas.",
+        "Make huge or tiny numbers tangible with scale comparisons to everyday things.",
+        "Use a calm, warm narrator voice with short, clear sentences and gentle humour.",
+        "End by zooming out to what this means for humanity or for the viewer, on a hopeful note.",
+      ],
+      src: ["kurzgesagt"],
+      template: "edu-story",
+    },
+    {
+      id: "analyst",
+      name: "Straight-to-the-Problem Analyst",
+      inspired: "Wendover Productions-style logistics and economics explainers",
+      summary: "No slow lead-in. States the central problem first (inverted pyramid), then unpacks it with data, systems and trade-offs.",
+      rules: [
+        "Skip any lead-in: confront the central problem or surprising conclusion in the first lines.",
+        "Use an inverted pyramid: give the most important conclusion or question first, then the layers beneath it.",
+        "Explain systems and trade-offs with specific numbers, routes, costs and constraints.",
+      ],
+      src: ["wendover"],
+      template: "edu-story",
+    },
+    {
+      id: "onetake",
+      name: "One-Take Storyteller",
+      inspired: "Tom Scott-style to-camera explainers",
+      summary: "Dense, precise and conversational, anchored to a real place or object, with no wasted words. Short enough to deliver in one take.",
+      rules: [
+        "Anchor the video to a specific real place, object or fact ('This is…').",
+        "Every sentence carries information: no filler, no hype words.",
+        "Conversational and precise; gentle wit; one clear point by the end.",
+        "Keep it tight enough to deliver to camera in a single take.",
+      ],
+      src: ["tomscott"],
+      template: "edu-story",
+    },
+    {
+      id: "challenge",
+      name: "High-Energy Stakes",
+      inspired: "MrBeast production-guide retention style",
+      summary: "Simple language, escalating stakes every 60–90 seconds and constant re-hooks. Nothing is allowed to feel slow.",
+      rules: [
+        "Treat the first minute as the most important; get to the premise in the first sentence.",
+        "Escalate stakes (money, time, difficulty, consequence) roughly every 60–90 seconds.",
+        "Very simple words and short sentences; constant forward momentum.",
+        "Never let a segment end without teasing the next.",
+      ],
+      src: ["mrbeast"],
+      template: "countdown",
+    },
+  ];
+
+  // Extra hook type from short-form research.
+  HOOKS.push({
+    id: "contrast",
+    name: "Context → But → Snapback",
+    why: "Kallaway's layered hook. Make the topic clear instantly, interrupt with 'but', then snap to a contrarian angle. The bigger the gap between what the viewer believes and your angle, the stronger the hook.",
+    bestFor: "Shorts, commentary, myth-busting",
+    fields: ["context", "common", "snapback"],
+    labels: { context: "Topic in plain words", common: "What everyone assumes", snapback: "Your contrarian angle" },
+    patterns: [
+      "{context}. Everyone thinks {common}. But {snapback}.",
+      "You've heard that {common}. But when it comes to {context}, {snapback}.",
+      "{context} — most people assume {common}. But here's the thing: {snapback}.",
+    ],
+    example: "Everyone thinks the Great Wall of China is visible from space. But astronauts say you can see a highway more easily than the wall.",
+  });
+
+  PLAYBOOK.splice(4, 0, {
+    theme: "4b. Lessons From Top Writers",
+    items: [
+      { t: "Focus on the feeling (Mark Rober)", d: "Facts are forgotten; feelings stick. Decide the emotion the viewer should leave with, whether awe, satisfaction or surprise, and build the story toward it.", src: ["rober-stanford"] },
+      { t: "Hide the vegetables (Mark Rober)", d: "Make the science the reward, not the prerequisite. Wrap the lesson inside an entertaining goal and teach it at the moment it's needed.", src: ["rober-storyrules"] },
+      { t: "Set up a rhythm, then break it", d: "Repeating a pattern (attempt, fail, attempt) builds expectation, and breaking it creates surprise. Each failed solution is a BUT that motivates the next reveal.", src: ["rober-effect"] },
+      { t: "Inverted pyramid (Wendover)", d: "For analytical explainers, skip the lead-in: put the central problem or most striking conclusion first, then unpack the layers beneath it.", src: ["wendover"] },
+      { t: "Every sentence earns its place (Tom Scott)", d: "Dense, precise, conversational scripts anchored to a real place or object. If a sentence carries no information or feeling, cut it.", src: ["tomscott"] },
+      { t: "Context, but, contrarian snapback (Kallaway)", d: "Make the topic clear in the first second, interrupt with 'but', then offer an angle that contrasts with what the viewer believes.", src: ["kallaway"] },
+    ],
+  });
+  PLAYBOOK.forEach((t, i) => { t.theme = (i + 1) + ". " + t.theme.replace(/^\S+\s/, ""); });
+
+  Object.assign(SOURCES, {
+    "rober-stanford": { name: "Stanford Daily — Mark Rober on scientific storytelling", url: "https://stanforddaily.com/2025/05/19/youtuber-and-former-nasa-engineer-mark-rober-draws-full-crowd-speaks-to-scientific-storytelling/" },
+    "rober-storyrules": { name: "Story Rules — Science storytelling tips from Mark Rober", url: "https://www.storyrules.com/science-storytelling-tips-from-mark-rober/" },
+    "rober-effect": { name: "Deconstructing the Mark Rober Effect (ft. Hayden Hillier-Smith)", url: "https://rosetta.to/u/digspaghetti/deconstructing-the-mark-rober-effect-ft-hayden-hillier-smith" },
+    wendover: { name: "Wendover Productions script pattern breakdown", url: "https://prepublish.ai/breakdowns/wendoverproductions" },
+    tomscott: { name: "Tom Scott script pattern breakdown", url: "https://prepublish.ai/breakdowns/tomscott" },
+    kallaway: { name: "Kallaway — How to create irresistible hooks (summary)", url: "https://videohighlight.com/v/LmXpbP7dD48" },
+  });
+
+  const KB = { TEMPLATES, HOOKS, PLAYBOOK, CHECKLIST, SOURCES, STYLES };
   if (typeof module !== "undefined" && module.exports) module.exports = KB;
   else root.KB = KB;
 })(typeof window !== "undefined" ? window : globalThis);
