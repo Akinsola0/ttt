@@ -462,12 +462,13 @@
     $$("#timeline .seg").forEach((el) => el.addEventListener("click", () => flashSentence(+el.dataset.i)));
 
     // Issues
-    $("#issues").innerHTML = r.issues.length ? r.issues.map((x) => {
+    const nicheHtml = nicheChecksHtml(cur().sections.map((x) => x.text).join("\n"), "Niche checks · " + niche().name);
+    $("#issues").innerHTML = nicheHtml + (r.issues.length ? r.issues.map((x) => {
       const idx = x.at == null ? -1 : nearestSentence(r, x.at);
       return `<div class="issue ${x.severity}">
         <div class="h"><span>${esc(x.title)}</span><span class="tag">${esc(x.area)} · ${x.severity}</span></div>
         <p>${esc(x.detail)}</p>${idx >= 0 ? `<button class="jump" data-i="${idx}">Show at ${fmt(r.sentences[idx].start)} →</button>` : ""}</div>`;
-    }).join("") : `<p class="good-news">🎉 No issues detected. Read it aloud once more, then record!</p>`;
+    }).join("") : `<p class="good-news">🎉 No issues detected. Read it aloud once more, then record!</p>`);
     $$("#issues .jump").forEach((b) => b.addEventListener("click", () => flashSentence(+b.dataset.i)));
 
     // Annotated
@@ -744,9 +745,20 @@
   let docCtl = null;
   sampleReady.then((fn) => { sampleFn = fn; });
 
+  const SPY_EXAMPLE = "Hey guys, welcome back to the channel. Today I want to tell you about a spy story that is really interesting. In 1953 a newspaper boy in Brooklyn got a nickel that was hollow. Inside it there was a tiny photo with numbers on it.\n\nAnd then the FBI got it and they couldn't crack the code for years. And then in 1957 a Soviet agent called Reino Häyhänen defected and told them about his boss. His boss was Rudolf Abel, who was living in New York as a photographer. And then the FBI arrested Abel.\n\nLater he was traded for the American pilot Francis Gary Powers in 1962. So that's basically the story of the hollow nickel. Let me know in the comments what you think and don't forget to subscribe!";
+  const NICHES = window.KB.NICHES;
+  function niche() {
+    if (!state.niche || !NICHES.some((n) => n.id === state.niche)) state.niche = "spy";
+    return NICHES.find((n) => n.id === state.niche);
+  }
+  function nicheExample(n) {
+    return n.id === "spy" ? { topic: "The hollow nickel spy case", text: SPY_EXAMPLE } : { topic: "Why honey never spoils", text: EXAMPLE_DRAFT };
+  }
   function doc() {
     if (!state.doctor) {
-      state.doctor = { topic: "Why honey never spoils", audience: "", minutes: 6, wpm: 150, style: "auto", template: "auto", text: EXAMPLE_DRAFT, isExample: true, result: null };
+      const n = niche();
+      const ex = nicheExample(n);
+      state.doctor = { topic: ex.topic, audience: "", minutes: n.minutes, wpm: n.wpm, style: n.style, template: n.template, text: ex.text, isExample: true, result: null, nicheApplied: n.id };
     }
     return state.doctor;
   }
@@ -755,6 +767,7 @@
 
   function docInputs() {
     const d = doc();
+    $("#docNicheName").textContent = niche().name;
     $("#docTopic").value = d.topic || "";
     $("#docAudience").value = d.audience || "";
     $("#docMinutes").value = d.minutes;
@@ -784,12 +797,20 @@
 
   function docAnalysis() { const d = doc(); return A.analyze(d.text || "", { wpm: d.wpm }); }
 
+  function nicheChecksHtml(text, title) {
+    const n = niche();
+    const res = window.KB.runNicheChecks(n, text);
+    if (!res.length) return "";
+    const passed = res.filter((x) => x.pass).length;
+    return `<div class="nchecks-title"><h4>${esc(title || n.name + " checks")}</h4><span class="muted small">${passed}/${res.length} passed</span></div>
+      <ul class="nchecks">${res.map((x) => `<li><span>${x.pass ? "✅" : "⚠️"}</span><span>${esc(x.label)}</span>${x.pass ? "" : `<span class="why">${esc(x.why)}</span>`}</li>`).join("")}</ul>`;
+  }
   function docReport() {
     const r = docAnalysis();
     const box = $("#docReport");
     if (r.empty) { box.innerHTML = `<p class="muted">Paste a script to see its retention check.</p>`; return; }
     const sc = r.scores, m = r.metrics;
-    box.innerHTML = `
+    box.innerHTML = nicheChecksHtml(doc().text, "Niche checks · " + niche().name) + `
       <div class="mini-rings">${ring(sc.overall, "Overall") + ring(sc.hook, "Hook") + ring(sc.momentum, "Momentum") + ring(sc.clarity, "Clarity") + ring(sc.engagement, "Engagement")}</div>
       <div class="mini-metrics">
         <span><b>${r.runtimeLabel}</b> runtime</span><span><b>${r.totalWords}</b> words</span>
@@ -804,7 +825,7 @@
 
   function docPrompt() {
     const d = doc();
-    return R.buildPrompt({ text: d.text, topic: d.topic, audience: d.audience, minutes: d.minutes, wpm: d.wpm, styleId: d.style, templateId: d.template, analysis: docAnalysis() });
+    return R.buildPrompt({ text: d.text, topic: d.topic, audience: d.audience, minutes: d.minutes, wpm: d.wpm, styleId: d.style, templateId: d.template, analysis: docAnalysis(), nicheId: niche().id });
   }
 
   function scriptHtml(sections, streaming) {
@@ -824,6 +845,8 @@
     $("#docPackaging").innerHTML =
       (p.titles.length ? `<h4>Title options</h4><ol>${p.titles.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : "") +
       (p.thumbnail ? `<h4>Thumbnail idea</h4><ul><li>${esc(p.thumbnail)}</li></ul>` : "");
+    $("#docNicheAfter").innerHTML = (!streaming && p.sections.length) ? nicheChecksHtml(p.sections.map((x) => x.text).join("\n"), "Niche checks (finished version)") : "";
+    $("#docSources").innerHTML = p.sources && p.sources.length ? `<h4>Sources to check</h4><ul>${p.sources.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : "";
     $("#docChanges").innerHTML = p.changes.length ? `<h4>What changed</h4><ul>${p.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : "";
     const checks = (raw || "").match(/\[CHECK:/g);
     if (!streaming && checks) $("#docChanges").innerHTML += `<p class="notice">⚠ ${checks.length} fact(s) are marked “Check”. Verify them before you record.</p>`;
@@ -921,6 +944,59 @@
     if (doc().result) renderDocResult(doc().result, false);
   }
 
+  // ------------------------------------------------------------------ NICHE
+  const nicheOptions = NICHES.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("");
+  $("#nicheSelect").innerHTML = nicheOptions;
+  $("#nicheSelect2").innerHTML = nicheOptions;
+  function setNiche(id) {
+    state.niche = id;
+    const n = niche();
+    const d = doc();
+    // Apply the niche's defaults to the Script Doctor.
+    Object.assign(d, { style: n.style, template: n.template, wpm: n.wpm, minutes: n.minutes, nicheApplied: n.id });
+    if (d.isExample) { const ex = nicheExample(n); d.topic = ex.topic; d.text = ex.text; d.result = null; $("#docResultCard").hidden = true; }
+    persist();
+    renderDoctor(); renderNiche();
+    if ($(".tabs button.active").dataset.tab === "analyze") renderAnalyze();
+    toast("Niche set to " + n.name);
+  }
+  $("#nicheSelect").addEventListener("change", (e) => setNiche(e.target.value));
+  $("#nicheSelect2").addEventListener("change", (e) => setNiche(e.target.value));
+
+  function listCard(title, items, cls) {
+    if (!items || !items.length) return "";
+    return `<div class="card ${cls || ""}"><h3>${esc(title)}</h3><ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>`;
+  }
+  function copyCard(title, items, note) {
+    if (!items || !items.length) return "";
+    return `<div class="card"><h3>${esc(title)}</h3>${note ? `<p class="muted small">${esc(note)}</p>` : ""}<ul class="quote-list">${items.map((i, k) => `<li><span>${esc(i)}</span><button class="btn small" data-ncopy="${esc(i.replace(/^“|”$/g, ""))}">Copy</button></li>`).join("")}</ul></div>`;
+  }
+  function renderNiche() {
+    const n = niche();
+    $("#nicheSelect").value = n.id;
+    $("#nicheSelect2").value = n.id;
+    $("#nicheName").textContent = n.name;
+    $("#nicheTagline").textContent = n.tagline;
+    const st = STYLES.find((x) => x.id === n.style) || STYLES[0];
+    const tp = TEMPLATES.find((x) => x.id === n.template) || TEMPLATES[0];
+    $("#nicheDefaults").innerHTML = `<span class="muted">Script Doctor defaults for this niche:</span>
+      <span>Style <b>${esc(st.name)}</b></span><span>Structure <b>${esc(tp.name)}</b></span>
+      <span><b>${n.wpm}</b> wpm</span><span><b>${n.minutes}</b> min</span>
+      <button class="btn small" data-goto="doctor">Open Script Doctor →</button>`;
+    const checks = n.checks.length ? `<div class="card"><h3>Niche checks</h3><p class="muted small">Run on every diagnosis and on the finished version.</p><ul>${n.checks.map((c) => `<li><b>${esc(c.label)}</b> · <span class="muted">${esc(c.why)}</span></li>`).join("")}</ul></div>` : "";
+    const research = n.research.length ? `<div class="card"><h3>Where to research</h3><ul>${n.research.map((x) => `<li><a href="${x.url}" target="_blank" rel="noopener">${esc(x.name)}</a></li>`).join("")}</ul></div>` : "";
+    const pack = (n.titles.length || n.thumbnails) ? `<div class="card"><h3>Titles & thumbnails</h3>${n.titles.length ? `<ul>${n.titles.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}${n.thumbnails ? `<p class="small" style="margin:10px 0 0"><b>Thumbnail:</b> ${esc(n.thumbnails)}</p>` : ""}</div>` : "";
+    const struct = `<div class="card wide"><h3>Structure: ${esc(tp.name)}</h3><p class="muted small">${esc(tp.blurb)}</p><ol>${tp.sections.map((x) => `<li><b>${esc(x.title)}</b> (${x.pct}%) · ${esc(x.purpose)}</li>`).join("")}</ol></div>`;
+    $("#nicheBody").innerHTML = n.id === "general"
+      ? `<div class="card wide"><p>No niche tuning. The Script Doctor uses the core rules from the Playbook.</p></div>`
+      : `<div class="card"><h3>Audience</h3><p style="margin:0 0 10px">${esc(n.audience)}</p>${n.wants.length ? `<ul>${n.wants.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>` : ""}</div>` +
+        listCard("Rules for this niche", n.rules) +
+        copyCard("Hook examples", n.hooks, "For tone. Write your own from your story.") +
+        copyCard("Re-hook lines", n.rehooks) +
+        listCard("Pitfalls to avoid", n.pitfalls) + pack + checks + research + struct;
+    $$("#nicheBody [data-ncopy]").forEach((b) => b.addEventListener("click", () => copy(b.dataset.ncopy)));
+  }
+
   // ------------------------------------------------------------------ boot
   function renderAll() {
     renderProjectSelect();
@@ -930,6 +1006,14 @@
     if (active === "story") renderStory();
     if (active === "playbook") renderChecklist();
   }
+  (function syncDoctorToNiche() {
+    const n = niche(), d = doc();
+    if (d.nicheApplied === n.id) return;
+    Object.assign(d, { style: n.style, template: n.template, wpm: n.wpm, minutes: n.minutes, nicheApplied: n.id });
+    if (d.isExample) { const ex = nicheExample(n); d.topic = ex.topic; d.text = ex.text; d.result = null; }
+    persist();
+  })();
+  renderNiche();
   renderDoctor();
   renderHookTypes();
   renderHookBuilder();

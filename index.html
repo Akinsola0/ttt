@@ -15,6 +15,7 @@
       <button id="newProjectBtn" class="btn">+ New script</button>
       <button id="deleteProjectBtn" class="btn ghost" title="Delete this script">Delete</button>
     </div>
+    <label class="niche-pick" for="nicheSelect"><span>Niche</span><select id="nicheSelect"></select></label>
     <div class="top-actions">
       <button id="teleprompterBtn" class="btn">▶ Teleprompter</button>
       <div class="menu">
@@ -35,6 +36,7 @@
 
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="doctor" class="active">🩺 Script Doctor</button>
+    <button role="tab" data-tab="niche">🎯 Niche</button>
     <button role="tab" data-tab="write">✍️ Write</button>
     <button role="tab" data-tab="analyze">📈 Retention Analyzer</button>
     <button role="tab" data-tab="hooks">🪝 Hook Lab</button>
@@ -53,6 +55,7 @@
       <div class="doctor-layout">
         <div class="card">
           <h3>1 · Your draft</h3>
+          <p class="niche-chip">Niche: <b id="docNicheName"></b> · <button class="linkish" data-goto="niche">see playbook</button></p>
           <div class="row2">
             <label>Topic<input id="docTopic" type="text" placeholder="e.g. Why honey never spoils" /></label>
             <label>Audience<input id="docAudience" type="text" placeholder="e.g. curious teens and adults" /></label>
@@ -94,10 +97,25 @@
           <div id="docScript" class="doc-script"></div>
           <aside class="result-side">
             <div id="docPackaging"></div>
+            <div id="docNicheAfter"></div>
             <div id="docChanges"></div>
+            <div id="docSources"></div>
           </aside>
         </div>
       </div>
+    </section>
+
+    <!-- NICHE -->
+    <section id="tab-niche" class="tab-panel">
+      <div class="niche-head">
+        <div>
+          <h2 id="nicheName"></h2>
+          <p id="nicheTagline" class="muted"></p>
+        </div>
+        <label class="niche-switch" for="nicheSelect2">Switch niche<select id="nicheSelect2"></select></label>
+      </div>
+      <div class="card niche-defaults" id="nicheDefaults"></div>
+      <div class="niche-grid" id="nicheBody"></div>
     </section>
 
     <section id="tab-write" class="tab-panel">
@@ -293,6 +311,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="js/knowledge.js"></script>
+  <script src="js/niches.js"></script>
   <script src="js/analyzer.js"></script>
   <script src="js/rewrite.js"></script>
   <script src="js/app.js"></script>

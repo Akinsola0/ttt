@@ -6,7 +6,7 @@
 (function (root) {
   "use strict";
 
-  const KB = (typeof module !== "undefined" && module.exports) ? require("./knowledge.js") : root.KB;
+  const KB = (typeof module !== "undefined" && module.exports) ? require("./niches.js") : root.KB;
 
   function bullet(list) { return list.map((x) => "- " + x).join("\n"); }
 
@@ -20,6 +20,7 @@
    * @param {string} o.styleId
    * @param {string} o.templateId  "auto" or a template id
    * @param {object} [o.analysis] result of Analyzer.analyze on the draft
+   * @param {string} [o.nicheId]
    */
   function buildPrompt(o) {
     const style = KB.STYLES.find((s) => s.id === o.styleId) || KB.STYLES[0];
@@ -36,6 +37,20 @@
       const w = Math.round((s.pct / totalPct) * words);
       return `${i + 1}. ${s.title} (~${w} words) — ${s.purpose}`;
     }).join("\n");
+
+    const niche = (KB.NICHES || []).find((n) => n.id === o.nicheId);
+    let nicheBlock = "";
+    if (niche && niche.id !== "general") {
+      nicheBlock = `\n<niche>\nYouTube niche: ${niche.name}. ${niche.tagline}\nAudience: ${niche.audience}\n` +
+        (niche.wants.length ? `What this audience wants:\n${bullet(niche.wants)}\n` : "") +
+        (niche.rules.length ? `Niche rules (follow all):\n${bullet(niche.rules)}\n` : "") +
+        (niche.pitfalls.length ? `Avoid these niche pitfalls:\n${bullet(niche.pitfalls)}\n` : "") +
+        (niche.hooks.length ? `Example hooks that fit this niche (for tone only, do not copy):\n${bullet(niche.hooks)}\n` : "") +
+        (niche.checks.length ? `The finished script must pass these checks:\n${bullet(niche.checks.map((c) => c.label + " — " + c.why))}\n` : "") +
+        (niche.titles.length ? `Title patterns that work in this niche:\n${bullet(niche.titles)}\n` : "") +
+        (niche.thumbnails ? `Thumbnail guidance: ${niche.thumbnails}\n` : "") +
+        `</niche>\n`;
+    }
 
     let diagnosis = "";
     if (o.analysis && !o.analysis.empty) {
@@ -84,7 +99,7 @@ ${principles}
 - Put a short visual / B-roll note in [square brackets] where it helps the editor.
 - Accuracy matters: keep the facts from the draft. Do not invent statistics, quotes, dates or names. If the story needs a fact the draft doesn't give, write it in and flag it as [CHECK: what to verify].
 </hard_rules>
-${diagnosis}
+${nicheBlock}${diagnosis}
 <draft>
 ${o.text.trim()}
 </draft>
@@ -104,7 +119,9 @@ Reply in exactly this format, with no other text before or after:
 ## (Next section title)
 (…)
 === CHANGES ===
-- (what you changed and which rule it serves; 5–8 bullets)`;
+- (what you changed and which rule it serves; 5–8 bullets)
+=== SOURCES TO CHECK ===
+- (each factual claim the viewer will take as true that should be verified, and where to verify it; mark anything you added or are unsure of)`;
   }
 
   function between(text, start, end) {
@@ -122,9 +139,11 @@ Reply in exactly this format, with no other text before or after:
       .split("\n").map((l) => l.replace(/^\s*(\d+[.)]|[-*])\s*/, "").trim()).filter(Boolean);
     const thumbnail = between(t, "=== THUMBNAIL ===", "===");
     const scriptRaw = t.includes("=== SCRIPT ===") ? between(t, "=== SCRIPT ===", "=== CHANGES ===") : (t.includes("===") ? "" : t.trim());
-    const changes = between(t, "=== CHANGES ===", null)
+    const changes = between(t, "=== CHANGES ===", "=== SOURCES TO CHECK ===")
       .split("\n").map((l) => l.replace(/^\s*[-*•]\s*/, "").trim()).filter(Boolean);
 
+    const sources = between(t, "=== SOURCES TO CHECK ===", null)
+      .split("\n").map((l) => l.replace(/^\s*[-*•]\s*/, "").trim()).filter(Boolean);
     const sections = [];
     let curr = null;
     scriptRaw.split("\n").forEach((line) => {
@@ -138,7 +157,7 @@ Reply in exactly this format, with no other text before or after:
       }
     });
     sections.forEach((s) => (s.text = s.text.replace(/\n{3,}/g, "\n\n").trim()));
-    return { titles, thumbnail, sections: sections.filter((s) => s.text || s.title), changes };
+    return { titles, thumbnail, sections: sections.filter((s) => s.text || s.title), changes, sources };
   }
 
   const API = { buildPrompt, parse };
