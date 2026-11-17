@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ScriptCraft</title>
+  <meta name="description" content="A YouTube script-writing studio for educational storytelling: structure templates, hook lab, retention analyzer, story tools and a research-backed playbook." />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo" aria-hidden="true">✦</span> ScriptCraft</div>
+    <div class="project-controls">
+      <select id="projectSelect" aria-label="Current script"></select>
+      <button id="newProjectBtn" class="btn">+ New script</button>
+      <button id="deleteProjectBtn" class="btn ghost" title="Delete this script">Delete</button>
+    </div>
+    <div class="top-actions">
+      <button id="teleprompterBtn" class="btn">▶ Teleprompter</button>
+      <div class="menu">
+        <button class="btn" id="exportBtn" aria-haspopup="true">Export ▾</button>
+        <div class="menu-list" id="exportMenu" hidden>
+          <button data-export="md">Markdown (with visual notes)</button>
+          <button data-export="txt">Narration only (.txt)</button>
+          <button data-export="json">Backup (.json)</button>
+          <label class="import-label">Import backup (.json)<input type="file" id="importFile" accept="application/json,.json" hidden /></label>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="write" class="active">✍️ Write</button>
+    <button role="tab" data-tab="analyze">📈 Retention Analyzer</button>
+    <button role="tab" data-tab="hooks">🪝 Hook Lab</button>
+    <button role="tab" data-tab="story">🧭 Story Tools</button>
+    <button role="tab" data-tab="playbook">📚 Playbook</button>
+  </nav>
+
+  <main>
+    <!-- WRITE -->
+    <section id="tab-write" class="tab-panel active">
+      <div class="write-layout">
+        <aside class="sidebar">
+          <div class="card">
+            <h3>Project</h3>
+            <label>Script name<input id="metaName" type="text" /></label>
+            <label>Topic / one-line idea<textarea id="metaTopic" rows="2" placeholder="e.g. Why airplane windows are round"></textarea></label>
+            <div class="row2">
+              <label>Target length (min)<input id="metaTarget" type="number" min="1" max="120" step="1" /></label>
+              <label>Speaking pace (wpm)<input id="metaWpm" type="number" min="80" max="220" step="5" /></label>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Packaging <span class="hint" title="Paddy Galloway: packaging is the difference between a million and 28 million views. Your hook must deliver on it.">ⓘ</span></h3>
+            <label>Title idea<input id="metaTitle" type="text" placeholder="Curiosity + clarity, under ~60 chars" /></label>
+            <label>Thumbnail concept<input id="metaThumb" type="text" placeholder="One image, one emotion, ≤3 words" /></label>
+            <label>Core promise to the viewer<input id="metaPromise" type="text" placeholder="By the end you'll understand…" /></label>
+            <label>The main question (open loop)<input id="metaQuestion" type="text" placeholder="The question the whole video answers" /></label>
+          </div>
+          <div class="card">
+            <h3>Outline & timing</h3>
+            <div id="outline"></div>
+            <div class="totals" id="totals"></div>
+          </div>
+          <div class="card live-score">
+            <h3>Live retention score</h3>
+            <div id="liveScore"></div>
+            <button class="btn small" data-goto="analyze">Open full analysis →</button>
+          </div>
+        </aside>
+        <div class="editor-col">
+          <div class="template-bar card">
+            <div>
+              <strong id="templateName"></strong>
+              <p id="templateBlurb" class="muted"></p>
+            </div>
+            <div class="template-actions">
+              <select id="templateSelect" aria-label="Structure template"></select>
+              <button id="applyTemplateBtn" class="btn">Apply structure</button>
+            </div>
+          </div>
+          <p class="muted tip">Tip: put visual / B-roll notes in <code>[square brackets]</code> — they're kept in exports but not counted as spoken words.</p>
+          <div id="sections"></div>
+          <button id="addSectionBtn" class="btn wide">+ Add section</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANALYZE -->
+    <section id="tab-analyze" class="tab-panel">
+      <div class="analyze-head">
+        <div id="scoreRings" class="score-rings"></div>
+        <div id="metrics" class="metrics"></div>
+      </div>
+      <div class="card">
+        <h3>Retention timeline <span class="muted small">— each block is a sentence; ▲ marks a re-hook (question, twist or open loop). Red bands = too long without one.</span></h3>
+        <div id="timeline" class="timeline"></div>
+        <div class="legend">
+          <span><i class="sw sw-q"></i>Question</span><span><i class="sw sw-turn"></i>Twist / “but”</span>
+          <span><i class="sw sw-loop"></i>Open loop</span><span><i class="sw sw-ex"></i>Example</span>
+          <span><i class="sw sw-long"></i>Long sentence</span><span><i class="sw sw-plain"></i>Plain</span>
+        </div>
+        <label class="inline">Re-hook threshold
+          <select id="gapSelect"><option value="60">60s</option><option value="75">75s</option><option value="90" selected>90s</option><option value="120">120s</option></select>
+        </label>
+      </div>
+      <div class="analyze-grid">
+        <div class="card">
+          <h3>What to fix</h3>
+          <div id="issues"></div>
+        </div>
+        <div class="card">
+          <h3>Annotated script</h3>
+          <div id="annotated" class="annotated"></div>
+        </div>
+      </div>
+      <p class="muted small">Scores are heuristics built from published retention advice — use them as a coach, not a verdict. Your own YouTube Studio retention graph is the final word.</p>
+    </section>
+
+    <!-- HOOKS -->
+    <section id="tab-hooks" class="tab-panel">
+      <div class="hooks-layout">
+        <div>
+          <h2>Pick a hook type</h2>
+          <div id="hookTypes" class="hook-types"></div>
+        </div>
+        <div>
+          <div class="card" id="hookBuilder"></div>
+          <div class="card">
+            <h3>Hook tester</h3>
+            <p class="muted">Paste or write any opening. It's scored against the first-15-seconds rules.</p>
+            <textarea id="hookTest" rows="4" placeholder="Write your opening lines here…"></textarea>
+            <div id="hookTestResult"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STORY -->
+    <section id="tab-story" class="tab-panel">
+      <div class="story-grid">
+        <div class="card">
+          <h3>ABT Builder <span class="muted small">(Randy Olson — And, But, Therefore)</span></h3>
+          <p class="muted">Turn your topic into a one-sentence story. If you can't write this, the video doesn't have a story yet.</p>
+          <label>AND — set the scene (what's true / normal)<textarea id="abtAnd" rows="2" placeholder="Planes in the 1950s were faster and flew higher than ever, and the de Havilland Comet was the future of travel…"></textarea></label>
+          <label>BUT — the problem / mystery<textarea id="abtBut" rows="2" placeholder="…but within a year, three of them broke apart in mid-air and nobody knew why…"></textarea></label>
+          <label>THEREFORE — what happened / what we learned<textarea id="abtTherefore" rows="2" placeholder="…therefore engineers rebuilt a whole plane in a water tank to find the answer: square windows."></textarea></label>
+          <div class="output" id="abtOut"></div>
+          <button class="btn small" id="abtToScript">Insert into first section</button>
+        </div>
+
+        <div class="card">
+          <h3>Beat Chain <span class="muted small">(Parker & Stone — BUT / THEREFORE)</span></h3>
+          <p class="muted">List the beats of your story and how each one connects to the next. “And then” chains are flagged.</p>
+          <div id="beats"></div>
+          <button class="btn small" id="addBeat">+ Add beat</button>
+          <div class="output" id="beatsOut"></div>
+        </div>
+
+        <div class="card">
+          <h3>Misconception Planner <span class="muted small">(Muller — misconception-first teaching)</span></h3>
+          <p class="muted">Viewers learn more when the wrong idea is surfaced and dismantled — not just when the right idea is explained.</p>
+          <label>The misconception most people hold<input id="mythBelief" type="text" /></label>
+          <label>Why it feels right (steelman it)<input id="mythWhy" type="text" /></label>
+          <label>The evidence that breaks it<input id="mythBreak" type="text" /></label>
+          <label>The correct model, in one sentence<input id="mythTruth" type="text" /></label>
+          <label>An everyday analogy<input id="mythAnalogy" type="text" /></label>
+          <label>So what? Why it matters to the viewer<input id="mythSoWhat" type="text" /></label>
+          <div class="output" id="mythOut"></div>
+          <button class="btn small" id="mythToScript">Create sections from this</button>
+        </div>
+
+        <div class="card">
+          <h3>Re-hook & Transition Bank</h3>
+          <p class="muted">Lines that pull viewers into the next segment. Click to copy.</p>
+          <div id="transitions" class="chips"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PLAYBOOK -->
+    <section id="tab-playbook" class="tab-panel">
+      <div class="playbook-layout">
+        <div id="playbook"></div>
+        <aside>
+          <div class="card sticky">
+            <h3>Pre-flight checklist</h3>
+            <p class="muted small">Saved per script.</p>
+            <div id="checklist"></div>
+            <div id="checklistScore" class="muted"></div>
+          </div>
+        </aside>
+      </div>
+      <div class="card">
+        <h3>Sources</h3>
+        <ul id="sources" class="sources"></ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- TELEPROMPTER -->
+  <div id="prompter" class="prompter" hidden>
+    <div class="prompter-bar">
+      <button class="btn" id="tpPlay">▶ Play</button>
+      <label>Speed <input type="range" id="tpSpeed" min="10" max="200" value="60" /></label>
+      <label>Size <input type="range" id="tpSize" min="24" max="80" value="44" /></label>
+      <label><input type="checkbox" id="tpMirror" /> Mirror</label>
+      <label><input type="checkbox" id="tpNotes" /> Show visual notes</label>
+      <span id="tpTime" class="muted"></span>
+      <button class="btn" id="tpClose">✕ Close (Esc)</button>
+    </div>
+    <div class="prompter-view" id="tpView"><div id="tpText" class="prompter-text"></div></div>
+    <div class="prompter-guide" aria-hidden="true"></div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/knowledge.js"></script>
+  <script src="js/analyzer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
