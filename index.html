@@ -23,7 +23,11 @@
           <button data-export="md">Markdown (with visual notes)</button>
           <button data-export="txt">Narration only (.txt)</button>
           <button data-export="json">Backup (.json)</button>
-          <label class="import-label">Import backup (.json)<input type="file" id="importFile" accept="application/json,.json" hidden /></label>
+          <button data-copy-export="md">Copy script as Markdown</button>
+          <button data-copy-export="txt">Copy narration only</button>
+          <button data-copy-export="json">Copy backup</button>
+          <button id="importPasteBtn">Restore from pasted backup</button>
+          <label class="import-label">Import backup file (.json)<input type="file" id="importFile" accept="application/json,.json" hidden /></label>
         </div>
       </div>
     </div>
@@ -212,6 +216,21 @@
     </div>
     <div class="prompter-view" id="tpView"><div id="tpText" class="prompter-text"></div></div>
     <div class="prompter-guide" aria-hidden="true"></div>
+  </div>
+
+  <div id="confirmBox" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirmMsg">
+    <div class="modal-card">
+      <p id="confirmMsg"></p>
+      <div class="modal-actions"><button class="btn" id="confirmCancel">Cancel</button><button class="btn primary" id="confirmOk">OK</button></div>
+    </div>
+  </div>
+
+  <div id="importBox" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="importTitle">
+    <div class="modal-card">
+      <p id="importTitle"><b>Restore scripts</b><br /><span class="muted small">Paste a backup you copied with “Copy backup”. Scripts are added alongside your current ones.</span></p>
+      <textarea id="importPaste" rows="6" placeholder='{"projects": [...]}'></textarea>
+      <div class="modal-actions" style="margin-top:12px"><button class="btn" id="importCancel">Cancel</button><button class="btn primary" id="importOk">Restore</button></div>
+    </div>
   </div>
 
   <div id="toast" class="toast" hidden></div>

@@ -22,6 +22,23 @@
     clearTimeout(toast._t);
     toast._t = setTimeout(() => (t.hidden = true), 2200);
   }
+  // In-page confirm (native confirm() is blocked in sandboxed viewers).
+  function askConfirm(msg, okLabel) {
+    return new Promise((resolve) => {
+      const box = $("#confirmBox");
+      $("#confirmMsg").textContent = msg;
+      $("#confirmOk").textContent = okLabel || "OK";
+      box.hidden = false;
+      $("#confirmOk").focus();
+      const done = (v) => { box.hidden = true; $("#confirmOk").onclick = $("#confirmCancel").onclick = null; resolve(v); };
+      $("#confirmOk").onclick = () => done(true);
+      $("#confirmCancel").onclick = () => done(false);
+    });
+  }
+  // Downloads don't work inside an embedded viewer, so offer copy instead there.
+  const EMBEDDED = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+  if (EMBEDDED) $$("#exportMenu [data-export], #exportMenu .file-only").forEach((b) => (b.hidden = true));
+
   function copy(text) {
     const done = () => toast("Copied to clipboard");
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -131,9 +148,9 @@
     state.projects.push(p); state.currentId = p.id; persist(); renderAll();
     $("#metaName").focus(); $("#metaName").select();
   });
-  $("#deleteProjectBtn").addEventListener("click", () => {
+  $("#deleteProjectBtn").addEventListener("click", async () => {
     const p = cur();
-    if (!confirm(`Delete “${p.name}”? This can't be undone (export a backup first if unsure).`)) return;
+    if (!(await askConfirm(`Delete “${p.name}”? This can't be undone. Export a backup first if you're unsure.`, "Delete script"))) return;
     state.projects = state.projects.filter((x) => x.id !== p.id);
     if (!state.projects.length) state.projects.push(newProject("edu-story"));
     state.currentId = state.projects[0].id; persist(); renderAll();
@@ -165,13 +182,32 @@
     if (kind === "json") download("scriptcraft-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify(state, null, 2), "application/json");
     $("#exportMenu").hidden = true;
   }));
+  $$("#exportMenu [data-copy-export]").forEach((b) => b.addEventListener("click", () => {
+    const p = cur();
+    const kind = b.dataset.copyExport;
+    copy(kind === "md" ? toMarkdown(p) : kind === "txt" ? toNarration(p) : JSON.stringify(state));
+    $("#exportMenu").hidden = true;
+  }));
+  $("#importPasteBtn").addEventListener("click", () => {
+    $("#exportMenu").hidden = true;
+    $("#importPaste").value = "";
+    $("#importBox").hidden = false;
+    $("#importPaste").focus();
+  });
+  $("#importCancel").addEventListener("click", () => ($("#importBox").hidden = true));
+  $("#importOk").addEventListener("click", () => {
+    if (importText($("#importPaste").value)) $("#importBox").hidden = true;
+  });
   $("#importFile").addEventListener("change", (e) => {
     const f = e.target.files[0];
     if (!f) return;
     const r = new FileReader();
-    r.onload = () => {
+    r.onload = () => { importText(r.result); e.target.value = ""; };
+    r.readAsText(f);
+  });
+  function importText(raw) {
       try {
-        const data = JSON.parse(r.result);
+        const data = JSON.parse(raw);
         const list = Array.isArray(data.projects) ? data.projects : (data.sections ? [data] : null);
         if (!list) throw new Error("Not a ScriptCraft backup");
         let n = 0;
@@ -186,11 +222,9 @@
           state.currentId = merged.id;
         });
         persist(); renderAll(); toast(`Imported ${n} script(s)`);
-      } catch (err) { alert("Import failed: " + err.message); }
-      e.target.value = "";
-    };
-    r.readAsText(f);
-  });
+        return true;
+      } catch (err) { toast("Import failed: " + err.message); return false; }
+  }
 
   function toMarkdown(p) {
     const m = p.meta;
@@ -233,11 +267,11 @@
 
   $("#templateSelect").innerHTML = TEMPLATES.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join("");
   $("#templateSelect").addEventListener("change", () => renderTemplateBar($("#templateSelect").value));
-  $("#applyTemplateBtn").addEventListener("click", () => {
+  $("#applyTemplateBtn").addEventListener("click", async () => {
     const p = cur();
     const tid = $("#templateSelect").value;
     const hasText = p.sections.some((s) => (s.text || "").trim());
-    if (hasText && !confirm("Apply this structure? Your existing text will be kept: it's moved into the new sections in order (extra text is appended to the last section).")) return;
+    if (hasText && !(await askConfirm("Apply this structure? Your text is kept and moved into the new sections in order. Any extra text goes into the last section.", "Apply structure"))) return;
     const old = p.sections.map((s) => s.text).filter((t) => (t || "").trim());
     const fresh = sectionsFromTemplate(tid);
     old.forEach((t, i) => {
@@ -287,10 +321,10 @@
       $(".title", card).addEventListener("input", (e) => { s.title = e.target.value; touch(); renderOutline(); });
       $("textarea", card).addEventListener("input", (e) => { s.text = e.target.value; touch(); updateTimings(); liveScore(); });
       $(".pct", card).addEventListener("input", (e) => { s.pct = Math.max(0, +e.target.value || 0); touch(); updateTimings(); });
-      $$("[data-act]", card).forEach((b) => b.addEventListener("click", () => {
+      $$("[data-act]", card).forEach((b) => b.addEventListener("click", async () => {
         const act = b.dataset.act;
         if (act === "del") {
-          if ((s.text || "").trim() && !confirm(`Delete section “${s.title}” and its text?`)) return;
+          if ((s.text || "").trim() && !(await askConfirm(`Delete section “${s.title}” and its text?`, "Delete section"))) return;
           p.sections.splice(i, 1);
           if (!p.sections.length) p.sections.push({ id: uid(), title: "Script", purpose: "", prompts: [], pct: 100, text: "" });
         } else {
@@ -666,8 +700,10 @@
     $("#prompter").hidden = false;
     $("#tpView").scrollTop = 0; tpPos = 0;
     $("#tpTime").textContent = "≈ " + analysis().runtimeLabel + " read time";
+    try { if (navigator.wakeLock && !tpWake) navigator.wakeLock.request("screen").then((w) => (tpWake = w), () => {}); } catch (e) { /* optional */ }
   }
-  function closePrompter() { tpRunning = false; $("#tpPlay").textContent = "▶ Play"; $("#prompter").hidden = true; }
+  let tpWake = null;
+  function closePrompter() { if (tpWake) { tpWake.release().catch(() => {}); tpWake = null; } tpRunning = false; $("#tpPlay").textContent = "▶ Play"; $("#prompter").hidden = true; }
   function tpLoop(ts) {
     if (!tpRunning) return;
     const dt = tpLast ? (ts - tpLast) / 1000 : 0;
