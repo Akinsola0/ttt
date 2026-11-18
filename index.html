@@ -73,6 +73,7 @@
           <p id="docExampleNote" class="muted small" hidden>This is an example draft so you can see how the Doctor works. Replace it with your own.</p>
           <div class="doc-actions">
             <button class="btn primary" id="docWrite">✦ Write finished version</button>
+            <button class="btn" id="docKeep" title="Keep your script word for word and add facts to it">Keep my script &amp; add facts</button>
             <button class="btn" id="docStop" hidden>Stop</button>
             <button class="btn ghost" id="docCopyPrompt" title="Copy the full rewrite instructions to paste into a Claude chat">Copy rewrite prompt</button>
           </div>
@@ -85,7 +86,7 @@
       </div>
       <div class="card" id="docResultCard" hidden>
         <div class="result-head">
-          <h3>3 · Finished version</h3>
+          <h3 id="docResultTitle">3 · Finished version</h3>
           <label class="version-pick" for="docVersion" hidden>Version<select id="docVersion"></select></label>
           <div class="doc-actions">
             <button class="btn primary" id="docOpen">Open in editor</button>

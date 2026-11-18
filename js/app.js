@@ -917,6 +917,25 @@
   }
   $("#docWrite").addEventListener("click", () => docWrite(false));
   $("#docAgain").addEventListener("click", () => docWrite(true));
+  $("#docKeep").addEventListener("click", () => {
+    const d = doc();
+    if (!(d.text || "").trim()) { toast("Paste your script first"); return; }
+    const vs = docVersions();
+    const last = vs[vs.length - 1];
+    if (last && last.kind === "pasted" && last.sections[0].text === d.text) {
+      d.active = vs.length - 1;
+    } else {
+      vs.push({ label: "Your script (as pasted)", at: now(), kind: "pasted", plain: true, sections: [{ title: "Your script", text: d.text }], inserts: [], titles: [], thumbnail: "", changes: [], sources: [] });
+      d.active = vs.length - 1;
+    }
+    persist();
+    renderDocVersion();
+    $("#docStatus").textContent = "Your script is saved as-is. Add facts in the box below it.";
+    const card = $("#docAddCard");
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+    const ta = $("textarea[data-f=text]", card);
+    if (ta) ta.focus({ preventScroll: true });
+  });
   $("#docStop").addEventListener("click", () => docCtl && docCtl.abort());
   $("#docCopyPrompt").addEventListener("click", () => {
     if (!(doc().text || "").trim()) { toast("Paste a script or notes first"); return; }
@@ -924,7 +943,7 @@
   });
   $("#docCopy").addEventListener("click", () => {
     const v = activeVersion();
-    if (v) copy(v.sections.map((s) => "## " + s.title + "\n\n" + s.text).join("\n\n"));
+    if (v) copy(v.plain ? v.sections.map((s) => s.text).join("\n\n") : v.sections.map((s) => "## " + s.title + "\n\n" + s.text).join("\n\n"));
   });
   $("#docOpen").addEventListener("click", () => {
     const d = doc();
@@ -1017,6 +1036,7 @@
     const v = activeVersion();
     if (!v) { $("#docResultCard").hidden = true; $("#docAddCard").hidden = true; return; }
     $("#docResultCard").hidden = false;
+    $("#docResultTitle").textContent = v.plain ? "3 · Your script" : "3 · Finished version";
     const sel = $("#docVersion");
     sel.innerHTML = vs.map((x, i) => `<option value="${i}" ${i === doc().active ? "selected" : ""}>${esc(versionName(x, i))}</option>`).join("");
     $(".version-pick").hidden = vs.length < 2;
@@ -1030,7 +1050,9 @@
     $("#docChanges").innerHTML = v.changes && v.changes.length ? `<h4>What changed in the rewrite</h4><ul>${v.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : "";
     const checks = all.match(/\[CHECK:/g);
     if (checks) $("#docChanges").innerHTML += `<p class="notice">⚠ ${checks.length} fact(s) are marked “Check”. Verify them before you record.</p>`;
-    if (v.kind === "additions") {
+    if (v.kind === "pasted") {
+      $("#docAddedSummary").innerHTML = `<div class="added-sum">Your script is kept exactly as you pasted it. Add facts, terms or details below and they'll be placed where they fit best.</div>`;
+    } else if (v.kind === "additions") {
       $("#docAddedSummary").innerHTML = `<div class="added-sum">${v.verified ? '<span class="ok">✓ Original text unchanged.</span>' : '<span class="bad">⚠ Couldn\'t confirm the original text is unchanged.</span>'}
         ${v.inserts.length} detail(s) added from v${(v.base || 0) + 1}${v.skipped && v.skipped.length ? `, ${v.skipped.length} not added` : ""}. New text is <mark class="added">highlighted</mark>.
         ${placementsHtml(v)}</div>`;
@@ -1063,8 +1085,8 @@
       const root = cfg.root();
       const rows = draft();
       root.innerHTML = `
-        <h3><span>＋ Add details</span><span class="muted small">Facts, terms, details or quotes, placed in the right spots. Nothing already written gets reworded.</span></h3>
-        ${cfg.intro ? `<p class="muted small">${cfg.intro}</p>` : ""}
+        <h3><span>＋ Add facts &amp; details</span><span class="muted small">Facts, terms, details or quotes, placed in the right spots. Nothing already written gets reworded.</span></h3>
+        ${cfg.intro ? `<p class="muted small">${typeof cfg.intro === "function" ? cfg.intro() : cfg.intro}</p>` : ""}
         <div class="add-rows">${rows.map((r, i) => `
           <div class="add-row" data-i="${i}">
             <select data-f="kind" aria-label="Type of addition">${Object.entries(E.KINDS).map(([k, l]) => `<option value="${k}" ${k === r.kind ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
@@ -1134,13 +1156,15 @@
     root: () => $("#docAddCard"),
     store: () => doc(),
     base: () => activeVersion(),
-    intro: "Details are added to the version shown above. That version stays saved, and the result becomes a new version you can compare or switch back from.",
+    intro: () => (activeVersion() && activeVersion().plain
+      ? "Facts are added to your script exactly where they fit. Your wording stays word for word. The result is saved as a new version, and your original stays as v1."
+      : "Details are added to the version shown above. That version stays saved, and the result becomes a new version you can compare or switch back from."),
     onApplied: (r) => {
       const d = doc();
       const base = activeVersion();
       const vs = docVersions();
       vs.push({
-        label: `+${r.inserts.length} detail${r.inserts.length === 1 ? "" : "s"}`, at: now(), kind: "additions", base: d.active,
+        label: `+${r.inserts.length} detail${r.inserts.length === 1 ? "" : "s"}`, at: now(), kind: "additions", base: d.active, plain: !!base.plain,
         sections: r.sections, inserts: r.inserts, verified: r.verified, skipped: r.skipped, additions: r.additions,
         titles: base.titles, thumbnail: base.thumbnail, changes: [],
         sources: (base.sources || []).concat(r.sources),
