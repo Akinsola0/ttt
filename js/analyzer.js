@@ -146,7 +146,13 @@
     const lower = fullText.toLowerCase();
 
     const issues = [];
-    const add = (severity, area, title, detail, at) => issues.push({ severity, area, title, detail, at });
+    // Each deduction is recorded on the issue that explains it (score + points lost).
+    let lastPen = null;
+    const pen = (score, pts) => { lastPen = { score, points: Math.round(pts * 10) / 10 }; return pts; };
+    const add = (severity, area, title, detail, at) => {
+      issues.push({ severity, area, title, detail, at, score: lastPen ? lastPen.score : null, points: lastPen ? lastPen.points : 0 });
+      lastPen = null;
+    };
 
     if (!sentences.length) {
       return {
@@ -165,7 +171,7 @@
     const hookText = hookSentences.map((s) => s.text).join(" ");
     const killers = countPhrases(firstWords, INTRO_KILLERS);
     if (killers.length) {
-      hook -= Math.min(45, killers.length * 20);
+      hook -= pen("hook", Math.min(45, killers.length * 20));
       add("high", "Hook", "Preamble in the first 30 seconds",
         "Found: " + killers.map((k) => "“" + k.phrase + "”").join(", ") +
         ". Greetings, channel intros and subscribe asks before the hook are where viewers leave. Start with the most intriguing moment instead.", 0);
@@ -173,19 +179,19 @@
     const hookHasPull = /\?/.test(hookText) || RE.turn.test(hookText) || RE.stakes.test(hookText) ||
       RE.number.test(hookText) || RE.openLoop.test(hookText);
     if (!hookHasPull) {
-      hook -= 30;
+      hook -= pen("hook", 30);
       add("high", "Hook", "Hook has no tension",
         "The first ~15 seconds contain no question, twist, stakes, surprising number or open loop. Give the viewer a reason to need the next sentence.", 0);
     }
     const firstSentence = sentences[0];
     if (firstSentence.words > 22) {
-      hook -= 15;
+      hook -= pen("hook", 15);
       add("medium", "Hook", "First sentence is long (" + firstSentence.words + " words)",
         "Your opening line should hit fast. Try under ~15 words — split it or cut to the most surprising part.", 0);
     }
     const youInHook = (hookText.match(RE.you) || []).length;
     if (!youInHook && !/\?/.test(hookText)) {
-      hook -= 10;
+      hook -= pen("hook", 10);
       add("low", "Hook", "Hook doesn't involve the viewer",
         "Consider addressing the viewer ('you') or asking them a question in the first 15 seconds.", 0);
     }
@@ -203,7 +209,7 @@
       if (g > rehookGap) gaps.push({ from: points[i - 1], to: points[i], len: g });
     }
     gaps.forEach((g) => {
-      momentum -= Math.min(20, 8 + (g.len - rehookGap) / 10);
+      momentum -= pen("momentum", Math.min(20, 8 + (g.len - rehookGap) / 10));
       add("high", "Momentum", "No re-hook for " + Math.round(g.len) + "s (" + fmtTime(g.from) + "–" + fmtTime(g.to) + ")",
         "Nothing new pulls the viewer forward here — no question, twist ('but…', 'turns out…') or open loop. Add a complication, raise the stakes, or tease what's coming.", g.from);
     });
@@ -212,21 +218,21 @@
     const buts = sentences.filter((s) => s.flags.includes("turn")).length;
     const therefores = sentences.filter((s) => s.flags.includes("therefore")).length;
     if (andThen >= 2) {
-      momentum -= Math.min(20, andThen * 5);
+      momentum -= pen("momentum", Math.min(20, andThen * 5));
       add("medium", "Momentum", "'And then' used " + andThen + " times",
         "Parker & Stone's rule: beats joined by 'and then' feel like a list. Rewrite them as 'but' (complication) or 'therefore' (consequence).",
         (sentences.find((s) => s.flags.includes("andthen")) || {}).start);
     }
     const minutes = runtime / 60;
     if (minutes >= 1 && buts / minutes < 1) {
-      momentum -= 12;
+      momentum -= pen("momentum", 12);
       add("medium", "Momentum", "Few turns / complications",
         "Only " + buts + " 'but / however / turns out' moments. Stories move on conflict — aim for at least one complication per minute.", null);
     }
     const questions = sentences.filter((s) => s.flags.includes("question")).length;
     const loops = sentences.filter((s) => s.flags.includes("loop")).length;
     if (minutes >= 2 && loops === 0) {
-      momentum -= 8;
+      momentum -= pen("momentum", 8);
       add("low", "Momentum", "No explicit open loops",
         "Tease something you'll pay off later ('…and that's where it gets strange — but first…'). Remember to close every loop you open.", null);
     }
@@ -236,7 +242,7 @@
     const endText = sentences.filter((s) => s.start >= endWindowStart).map((s) => s.text).join(" ").toLowerCase();
     const endHits = countPhrases(endText, ENDING_SIGNALS);
     if (endHits.length && minutes >= 1) {
-      momentum -= 6;
+      momentum -= pen("momentum", 6);
       add("medium", "Ending", "Ending signal detected",
         "Phrases like " + endHits.map((h) => "“" + h.phrase + "”").join(", ") +
         " tell viewers the value is over, so they leave. End on your payoff line, then bridge to a specific next video.", endWindowStart);
@@ -248,30 +254,30 @@
     const longSentences = sentences.filter((s) => s.words > 25);
     const flesch = 206.835 - 1.015 * avgLen - 84.6 * (totalSyll / Math.max(1, totalWords));
     if (avgLen > 20) {
-      clarity -= Math.min(25, (avgLen - 20) * 3);
+      clarity -= pen("clarity", Math.min(25, (avgLen - 20) * 3));
       add("medium", "Clarity", "Average sentence is " + avgLen.toFixed(1) + " words",
         "Spoken scripts work best around 10–18 words per sentence. Listeners can't re-read.", null);
     }
     if (longSentences.length) {
-      clarity -= Math.min(25, longSentences.length * 4);
+      clarity -= pen("clarity", Math.min(25, longSentences.length * 4));
       add(longSentences.length > 3 ? "medium" : "low", "Clarity", longSentences.length + " sentence(s) over 25 words",
         "Long sentences make the narrator run out of breath and the viewer lose the thread. Split them.", longSentences[0].start);
     }
     if (flesch < 50) {
-      clarity -= 15;
+      clarity -= pen("clarity", 15);
       add("medium", "Clarity", "Dense language (readability " + Math.round(flesch) + ")",
         "Aim for 60+ on the Flesch scale for narration. Swap long words for short ones and explain jargon with an analogy.", null);
     }
     const passives = (fullText.match(RE.passive) || []);
     if (passives.length / sentences.length > 0.15) {
-      clarity -= 10;
+      clarity -= pen("clarity", 10);
       add("low", "Clarity", "Lots of passive voice (" + passives.length + ")",
         "e.g. “" + passives.slice(0, 3).join("”, “") + "”. Active voice ('the engineers built…') is punchier than passive ('it was built…').", null);
     }
     const fillers = countPhrases(lower, FILLERS);
     const fillerCount = fillers.reduce((a, b) => a + b.count, 0);
     if (fillerCount / Math.max(1, totalWords) > 0.015) {
-      clarity -= Math.min(15, fillerCount * 2);
+      clarity -= pen("clarity", Math.min(15, fillerCount * 2));
       add("low", "Clarity", "Filler words (" + fillerCount + ")",
         fillers.sort((a, b) => b.count - a.count).slice(0, 6).map((f) => f.phrase + " ×" + f.count).join(", ") +
         ". Cut them unless they carry meaning.", null);
@@ -281,7 +287,7 @@
       const mean = avgLen;
       const sd = Math.sqrt(sentences.reduce((a, s) => a + Math.pow(s.words - mean, 2), 0) / sentences.length);
       if (sd < 3.5) {
-        clarity -= 8;
+        clarity -= pen("clarity", 8);
         add("low", "Clarity", "Sentence lengths are monotonous",
           "Vary your rhythm: a long sentence that builds, then a short one. Like this.", null);
       }
@@ -292,30 +298,30 @@
     const youCount = (fullText.match(RE.you) || []).length;
     const youPer100 = (youCount / Math.max(1, totalWords)) * 100;
     if (youPer100 < 1) {
-      engagement -= 20;
+      engagement -= pen("engagement", 20);
       add("medium", "Engagement", "Rarely talks to the viewer",
         "'You' appears " + youCount + " times. Pull the viewer in: 'Imagine you're…', 'You've probably heard…'.", null);
     }
     const examples = sentences.filter((s) => s.flags.includes("example")).length;
     if (minutes >= 1.5 && examples / minutes < 0.4) {
-      engagement -= 18;
+      engagement -= pen("engagement", 18);
       add("medium", "Engagement", "Few concrete examples or analogies",
         "Only " + examples + " example/analogy markers ('imagine', 'for example', 'it's like…'). Every abstract idea needs something the viewer can picture.", null);
     }
     const numbers = sentences.filter((s) => RE.number.test(s.text)).length;
     if (minutes >= 1.5 && numbers === 0) {
-      engagement -= 8;
+      engagement -= pen("engagement", 8);
       add("low", "Engagement", "No specific numbers",
         "Specific figures (dates, amounts, sizes) make a story feel real and credible.", null);
     }
     if (minutes >= 1.5 && questions / minutes < 0.5) {
-      engagement -= 12;
+      engagement -= pen("engagement", 12);
       add("low", "Engagement", "Few questions",
         "Questions make viewers think before you answer — this is when curiosity (and learning) peaks.", null);
     }
     const stakes = sentences.filter((s) => s.flags.includes("stakes")).length;
     if (minutes >= 2 && stakes === 0) {
-      engagement -= 10;
+      engagement -= pen("engagement", 10);
       add("low", "Engagement", "No stakes language",
         "What could be won or lost? Make consequences explicit — money, lives, time, reputation.", null);
     }

@@ -428,6 +428,7 @@
     return "plain";
   }
   function renderAnalyze() {
+    if (window.__addPanelsReady) boostPanel.write.render();
     const gap = +$("#gapSelect").value;
     const r = analysis({ rehookGap: gap });
     if (r.empty) {
@@ -1052,6 +1053,11 @@
     if (checks) $("#docChanges").innerHTML += `<p class="notice">⚠ ${checks.length} fact(s) are marked “Check”. Verify them before you record.</p>`;
     if (v.kind === "pasted") {
       $("#docAddedSummary").innerHTML = `<div class="added-sum">Your script is kept exactly as you pasted it. Add facts, terms or details below and they'll be placed where they fit best.</div>`;
+    } else if (v.kind === "boost") {
+      const sc = v.scoreChange || {};
+      $("#docAddedSummary").innerHTML = `<div class="added-sum"><b>${v.inserts.length} fix(es) applied</b> from v${(v.base || 0) + 1}. Changed text is <mark class="added">highlighted</mark>.
+        ${sc.base ? ` Overall ${sc.base.overall} → <b>${sc.after.overall}</b>.` : ""}
+        <ul class="placements">${(v.applied || []).map((e) => `<li><span class="where">${esc(e.area || "")} · ${esc(v.sections[e.section].title)}, sentence ${e.sentence} · ${esc(e.action.replace("_", " "))}</span>${e.original ? `<span class="before-line"><s>${fmtPiece(e.original)}</s></span>` : ""}${e.text ? `<span>${fmtPiece(e.text)}</span>` : ""}<span class="why">${esc(e.why)}</span></li>`).join("")}</ul></div>`;
     } else if (v.kind === "additions") {
       $("#docAddedSummary").innerHTML = `<div class="added-sum">${v.verified ? '<span class="ok">✓ Original text unchanged.</span>' : '<span class="bad">⚠ Couldn\'t confirm the original text is unchanged.</span>'}
         ${v.inserts.length} detail(s) added from v${(v.base || 0) + 1}${v.skipped && v.skipped.length ? `, ${v.skipped.length} not added` : ""}. New text is <mark class="added">highlighted</mark>.
@@ -1067,6 +1073,8 @@
     }).join("") + `<div class="cmp">Runtime: <b>${after.runtimeLabel}</b> · ${after.totalWords} words</div>`;
     $("#docAddCard").hidden = false;
     addPanel.doc.render();
+    $("#docBoostCard").hidden = false;
+    boostPanel.doc.render();
   }
   $("#docVersion").addEventListener("change", (e) => { doc().active = +e.target.value; persist(); renderDocVersion(); });
 
@@ -1222,6 +1230,166 @@
         touch(); renderSections(); liveScore(); addPanel.write.render();
         toast("Restored v" + (+b.dataset.restore + 1));
       }));
+    },
+  });
+
+  // ------------------------------------------------------------------ ROAD TO 100
+  const B = window.Boost;
+  const sig = (sections) => sections.map((s) => s.title + "\u0001" + s.text).join("\u0002");
+  function gainChips(delta) {
+    const parts = B.AREAS.filter((a) => delta[a.key]).map((a) => `<span class="gain ${delta[a.key] > 0 ? "up" : "down"}">${delta[a.key] > 0 ? "+" : ""}${delta[a.key]} ${a.label}</span>`);
+    return parts.length ? parts.join("") : `<span class="gain">no score change</span>`;
+  }
+  /** cfg: { root(), sections(), store() -> holds .boost, wpm(), onApplied({sections, marks, applied, scoreChange}) } */
+  function makeBoostPanel(cfg) {
+    let ctl = null, busy = false, msg = "";
+    const st = () => { const s = cfg.store(); if (!s.boost) s.boost = { sig: "", suggestions: [], selected: {} }; return s.boost; };
+    function render() {
+      const root = cfg.root();
+      if (!root) return;
+      const sections = cfg.sections();
+      if (!sections || !sections.some((s) => (s.text || "").trim())) { root.innerHTML = `<h3>📈 Road to 100</h3><p class="muted">Write or paste a script to see how to raise each score.</p>`; return; }
+      const b = st();
+      if (b.sig !== sig(sections)) { b.sig = sig(sections); b.suggestions = []; b.selected = {}; }
+      const opts = { wpm: cfg.wpm() };
+      const r = A.analyze(sections, opts);
+      const bd = B.breakdown(r);
+      const nicheRes = window.KB.runNicheChecks(niche(), sections.map((s) => s.text).join("\n"));
+      const nicheFails = nicheRes.filter((x) => !x.pass);
+      const below = bd.filter((x) => x.score < 100).map((x) => x.key);
+      const allTop = !below.length && !nicheFails.length;
+      root.innerHTML = `
+        <div class="boost-head"><h3>📈 Road to 100</h3>
+          ${allTop ? `<span class="good-news">Every score is at 100. 🎉</span>` : `<button class="btn primary" data-boost="${below.join(",") || "hook,momentum,clarity,engagement"}" ${busy ? "disabled" : ""}>✦ Suggest fixes for everything below 100</button>`}</div>
+        <p class="muted small" style="margin:0">Points lost and why, per score. Suggested fixes are re-scored by the app before you apply them, so the gains shown are real.</p>
+        <div class="boost-areas">${bd.map((x) => `
+          <div class="boost-area">
+            <span class="name">${x.label}</span>
+            <span class="meter"><span class="bar"><i style="width:${x.score}%;background:var(--${x.score >= 75 ? "good" : x.score >= 50 ? "warn" : "bad"})"></i></span><b>${x.score}</b></span>
+            ${x.score < 100 ? `<button class="btn small" data-boost="${x.key}" ${busy ? "disabled" : ""}>Suggest fixes</button>` : `<span class="done">✓ 100</span>`}
+            ${x.items.length ? `<ul>${x.items.map((i) => `<li><span class="pts">−${i.points}</span> ${esc(i.title)}</li>`).join("")}</ul>` : ""}
+          </div>`).join("")}
+          ${nicheRes.length ? `<div class="boost-area"><span class="name">Niche</span>
+            <span class="meter"><span class="bar"><i style="width:${Math.round(100 * (nicheRes.length - nicheFails.length) / nicheRes.length)}%;background:var(--${nicheFails.length ? "warn" : "good"})"></i></span><b>${nicheRes.length - nicheFails.length}/${nicheRes.length}</b></span>
+            ${nicheFails.length ? `<button class="btn small" data-boost="niche" ${busy ? "disabled" : ""}>Suggest fixes</button>` : `<span class="done">✓ all pass</span>`}
+            ${nicheFails.length ? `<ul>${nicheFails.map((c) => `<li>⚠️ ${esc(c.label)}</li>`).join("")}</ul>` : ""}</div>` : ""}
+        </div>
+        <div data-bstatus class="muted small" aria-live="polite">${esc(msg)}</div>
+        ${busy ? `<button class="btn small" data-bstop>Stop</button>` : ""}
+        <div data-suggs></div>`;
+      $$("[data-boost]", root).forEach((btn) => btn.addEventListener("click", () => suggest(btn.dataset.boost.split(","), nicheFails)));
+      const stop = $("[data-bstop]", root); if (stop) stop.addEventListener("click", () => ctl && ctl.abort());
+      renderSuggestions(sections, opts);
+    }
+    function renderSuggestions(sections, opts) {
+      const root = cfg.root();
+      const box = $("[data-suggs]", root);
+      const b = st();
+      if (!b.suggestions.length) { box.innerHTML = ""; return; }
+      box.innerHTML = `<h4 style="margin:14px 0 4px">Suggested fixes (${b.suggestions.length})</h4>` + b.suggestions.map((e, i) => {
+        const imp = B.impact(sections, [e], opts);
+        return `<label class="sugg">
+          <input type="checkbox" data-pick="${i}" ${b.selected[i] ? "checked" : ""} />
+          <span style="display:grid;gap:4px;min-width:0">
+            <span class="meta">${e.area ? `<span class="chip-area">${esc(e.area)}</span>` : ""}<span>${esc(sections[e.section].title)} · sentence ${e.sentence} · ${esc(e.action.replace("_", " "))}</span>${gainChips(imp.delta)}</span>
+            ${e.original ? `<span class="before">${esc(e.original)}</span>` : ""}
+            ${e.text ? `<span class="after">${fmtPiece(e.text)}</span>` : `<span class="why">(sentence removed)</span>`}
+            ${e.why ? `<span class="why">${esc(e.why)}</span>` : ""}
+          </span></label>`;
+      }).join("") + `<div class="boost-foot"><span class="proj" data-proj></span>
+        <span class="doc-actions"><button class="btn small" data-all>Select all</button><button class="btn primary" data-apply>Apply selected</button></span></div>`;
+      const proj = () => {
+        const picked = b.suggestions.filter((_, i) => b.selected[i]);
+        const el = $("[data-proj]", box);
+        $("[data-apply]", box).disabled = !picked.length;
+        if (!picked.length) { el.textContent = "Tick the fixes you want."; return; }
+        const imp = B.impact(sections, picked, opts);
+        el.innerHTML = `With ${picked.length} fix(es): Overall ${imp.base.overall} → <b class="${gradeClass(imp.after.overall)}">${imp.after.overall}</b> ` +
+          B.AREAS.map((a) => `· ${a.label} ${imp.base[a.key]}→<b>${imp.after[a.key]}</b>`).join(" ");
+      };
+      $$("[data-pick]", box).forEach((cb) => cb.addEventListener("change", () => { b.selected[cb.dataset.pick] = cb.checked; persist(); proj(); }));
+      $("[data-all]", box).addEventListener("click", () => { b.suggestions.forEach((_, i) => (b.selected[i] = true)); persist(); renderSuggestions(sections, opts); });
+      $("[data-apply]", box).addEventListener("click", () => {
+        const picked = b.suggestions.filter((_, i) => b.selected[i]);
+        if (!picked.length) return;
+        const scoreChange = B.impact(sections, picked, opts);
+        const res = B.applyEdits(sections, picked);
+        b.suggestions = []; b.selected = {}; msg = "";
+        cfg.onApplied({ sections: res.sections, marks: res.marks, applied: picked, scoreChange });
+        persist();
+        toast(`Applied ${picked.length} fix(es) · Overall ${scoreChange.base.overall} → ${scoreChange.after.overall}`);
+      });
+      proj();
+    }
+    async function suggest(areas, nicheFails) {
+      const sections = cfg.sections().map((s) => ({ title: s.title, text: s.text }));
+      const fn = sampleFn || (await sampleReady);
+      if (!fn || typeof fn.json !== "function") { msg = "Suggesting fixes needs Claude. Open the app from its claude.ai link. The points breakdown above works anywhere."; render(); return; }
+      const wantNiche = areas.includes("niche");
+      const scoreAreas = areas.filter((a) => a !== "niche");
+      const result = A.analyze(sections, { wpm: cfg.wpm() });
+      ctl = new AbortController(); busy = true; msg = "Finding the fixes that add the most points… (usually 15–60 seconds)"; render();
+      try {
+        const raw = await fn.json(B.buildPrompt({
+          sections, result, wpm: cfg.wpm(), niche: niche(),
+          areas: scoreAreas.length ? scoreAreas : [],
+          nicheFails: wantNiche || areas.length > 1 ? nicheFails : [],
+        }), { signal: ctl.signal, cache: false });
+        const edits = B.normalise(raw, sections);
+        const b = st();
+        b.sig = sig(cfg.sections());
+        b.suggestions = edits; b.selected = {};
+        // Pre-tick greedily: keep a fix only if the combined selection raises Overall and lowers no score.
+        const o = { wpm: cfg.wpm() };
+        let chosen = [], best = A.analyze(sections, o).scores;
+        edits.forEach((e, i) => {
+          const sc = B.impact(sections, chosen.concat([e]), o).after;
+          const ok = sc.overall > best.overall && B.AREAS.every((a) => sc[a.key] >= best[a.key]);
+          b.selected[i] = ok;
+          if (ok) { chosen = chosen.concat([e]); best = sc; }
+        });
+        msg = edits.length ? "Pre-ticked: the combination of fixes that raises your score without lowering any other. Review, then apply." : "No usable fixes came back. Try again.";
+      } catch (e) {
+        msg = e && e.code === "cancelled" ? "Stopped." : e && e.code === "invalid_json" ? "Couldn't read Claude's answer. Try again." : (ERR[e && e.code] || "Something went wrong. Try again.");
+      } finally {
+        busy = false; ctl = null; persist(); render();
+      }
+    }
+    return { render };
+  }
+
+  const boostPanel = {};
+  boostPanel.doc = makeBoostPanel({
+    root: () => $("#docBoostCard"),
+    sections: () => (activeVersion() ? activeVersion().sections : []),
+    store: () => doc(),
+    wpm: () => doc().wpm,
+    onApplied: (r) => {
+      const d = doc();
+      const base = activeVersion();
+      const vs = docVersions();
+      vs.push({
+        label: `Boosted · ${r.scoreChange.base.overall}→${r.scoreChange.after.overall}`, at: now(), kind: "boost", base: d.active, plain: !!base.plain,
+        sections: r.sections, inserts: r.marks, applied: r.applied, scoreChange: r.scoreChange,
+        titles: base.titles, thumbnail: base.thumbnail, changes: [], sources: base.sources || [],
+      });
+      d.active = vs.length - 1;
+      renderDocVersion();
+      $("#docResultCard").scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+  });
+  boostPanel.write = makeBoostPanel({
+    root: () => $("#anBoostCard"),
+    sections: () => cur().sections,
+    store: () => cur(),
+    wpm: () => cur().wpm,
+    onApplied: (r) => {
+      const p = cur();
+      const vs = projVersions(p);
+      if (!vs.length || !sameAs(p, vs[vs.length - 1].sections)) vs.push({ label: vs.length ? "Before fixes" : "Original", at: now(), sections: snapshot(p) });
+      r.sections.forEach((s, i) => { if (p.sections[i]) p.sections[i].text = s.text; });
+      vs.push({ label: `Boosted · ${r.scoreChange.base.overall}→${r.scoreChange.after.overall}`, at: now(), sections: snapshot(p) });
+      touch(); renderSections(); liveScore(); renderAnalyze(); addPanel.write.render();
     },
   });
 
