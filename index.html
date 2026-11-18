@@ -86,6 +86,7 @@
       <div class="card" id="docResultCard" hidden>
         <div class="result-head">
           <h3>3 · Finished version</h3>
+          <label class="version-pick" for="docVersion" hidden>Version<select id="docVersion"></select></label>
           <div class="doc-actions">
             <button class="btn primary" id="docOpen">Open in editor</button>
             <button class="btn" id="docCopy">Copy script</button>
@@ -93,6 +94,7 @@
           </div>
         </div>
         <div id="docCompare" class="compare"></div>
+        <div id="docAddedSummary"></div>
         <div class="result-grid">
           <div id="docScript" class="doc-script"></div>
           <aside class="result-side">
@@ -103,6 +105,7 @@
           </aside>
         </div>
       </div>
+      <div class="card add-card" id="docAddCard" hidden></div>
     </section>
 
     <!-- NICHE -->
@@ -162,6 +165,7 @@
           <p class="muted tip">Tip: put visual / B-roll notes in <code>[square brackets]</code> — they're kept in exports but not counted as spoken words.</p>
           <div id="sections"></div>
           <button id="addSectionBtn" class="btn wide">+ Add section</button>
+          <div class="card add-card" id="writeAddCard"></div>
         </div>
       </div>
     </section>
@@ -314,6 +318,7 @@
   <script src="js/niches.js"></script>
   <script src="js/analyzer.js"></script>
   <script src="js/rewrite.js"></script>
+  <script src="js/enrich.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

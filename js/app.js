@@ -405,6 +405,7 @@
     renderTemplateBar(p.templateId);
     renderSections();
     liveScore();
+    if (window.__addPanelsReady) addPanel.write.render();
   }
 
   // ------------------------------------------------------------------ ANALYZE
@@ -838,6 +839,10 @@
   }
 
   function renderDocResult(raw, streaming) {
+    if (!streaming) { renderDocVersion(); return; }
+    $("#docAddCard").hidden = true;
+    $(".version-pick").hidden = true;
+    $("#docAddedSummary").innerHTML = "";
     const card = $("#docResultCard");
     card.hidden = false;
     const p = R.parse(raw || "");
@@ -894,13 +899,15 @@
       const opts = { signal: docCtl.signal, onText: ({ text }) => renderDocResult(text, true) };
       if (fresh) opts.cache = false;
       const { text, truncated } = await fn(docPrompt(), opts);
-      d.result = text; persist();
-      renderDocResult(text, false);
+      d.result = text;
+      pushRewriteVersion(text);
+      persist();
+      renderDocVersion();
       $("#docStatus").textContent = truncated ? "The answer was cut short. Try a shorter target length." : "Done. Review it, then open it in the editor to polish and record.";
     } catch (e) {
-      if (e && e.text) { d.result = e.text; renderDocResult(e.text, false); }
-      else if (!d.result) $("#docResultCard").hidden = true;
-      else renderDocResult(d.result, false);
+      if (e && e.text && R.parse(e.text).sections.length) { d.result = e.text; pushRewriteVersion(e.text); persist(); renderDocVersion(); }
+      else if (!docVersions().length) $("#docResultCard").hidden = true;
+      else renderDocVersion();
       $("#docStatus").textContent = e && e.code === "cancelled" ? "Stopped." : (ERR[e && e.code] || "Something went wrong while writing. Try again.");
     } finally {
       $("#docWrite").disabled = false;
@@ -916,13 +923,13 @@
     copy(docPrompt());
   });
   $("#docCopy").addEventListener("click", () => {
-    const p = R.parse(doc().result || "");
-    copy(p.sections.map((s) => "## " + s.title + "\n\n" + s.text).join("\n\n"));
+    const v = activeVersion();
+    if (v) copy(v.sections.map((s) => "## " + s.title + "\n\n" + s.text).join("\n\n"));
   });
   $("#docOpen").addEventListener("click", () => {
     const d = doc();
-    const p = R.parse(d.result || "");
-    if (!p.sections.length) return;
+    const p = activeVersion();
+    if (!p || !p.sections.length) return;
     const st = STYLES.find((s) => s.id === d.style) || STYLES[0];
     const tid = d.template === "auto" ? st.template : d.template;
     const proj = newProject(tid, (d.topic || p.titles[0] || "Finished script").slice(0, 80));
@@ -941,8 +948,258 @@
   function renderDoctor() {
     docInputs();
     docReport();
-    if (doc().result) renderDocResult(doc().result, false);
+    if (docVersions().length) renderDocVersion();
   }
+
+  // ------------------------------------------------------------------ VERSIONS + ADD DETAILS
+  const E = window.Enrich;
+  const now = () => new Date().toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  function docVersions() {
+    const d = doc();
+    if (!d.versions) {
+      d.versions = [];
+      if (d.result) { const p = R.parse(d.result); if (p.sections.length) d.versions.push({ label: "Finished version", at: now(), kind: "rewrite", sections: p.sections, inserts: [], titles: p.titles, thumbnail: p.thumbnail, changes: p.changes, sources: p.sources || [] }); }
+      d.active = d.versions.length - 1;
+    }
+    return d.versions;
+  }
+  function activeVersion() {
+    const vs = docVersions();
+    const d = doc();
+    if (d.active == null || !vs[d.active]) d.active = vs.length - 1;
+    return vs[d.active] || null;
+  }
+  function pushRewriteVersion(raw) {
+    const p = R.parse(raw);
+    if (!p.sections.length) return;
+    const vs = docVersions();
+    vs.push({ label: "Finished version", at: now(), kind: "rewrite", sections: p.sections, inserts: [], titles: p.titles, thumbnail: p.thumbnail, changes: p.changes, sources: p.sources || [] });
+    doc().active = vs.length - 1;
+  }
+  function versionName(v, i) { return `v${i + 1} · ${v.label} · ${v.at}`; }
+
+  function fmtPiece(str) {
+    return esc(str)
+      .replace(/\[CHECK:([^\]]*)\]/g, '<span class="chk">⚠ Check:$1</span>')
+      .replace(/\[([^\]]*)\]/g, '<span class="vn">[$1]</span>');
+  }
+  /** Script HTML with inserted ranges highlighted. */
+  function versionHtml(sections, inserts, onlyChanged) {
+    return sections.map((s, si) => {
+      const mine = (inserts || []).filter((x) => x.section === si).sort((a, b) => a.start - b.start);
+      if (onlyChanged && !mine.length) return "";
+      let html = "", pos = 0;
+      mine.forEach((x) => {
+        html += fmtPiece(s.text.slice(pos, x.start));
+        html += `<mark class="added" title="${esc(x.reason || "Added detail")}">${fmtPiece(s.text.slice(x.start, x.end))}</mark>`;
+        pos = x.end;
+      });
+      html += fmtPiece(s.text.slice(pos));
+      return `<h4>${esc(s.title)}</h4><div class="sec-body">${html}</div>`;
+    }).join("");
+  }
+  function placementsHtml(v) {
+    const ins = v.inserts || [];
+    const items = ins.map((x) => {
+      const a = (v.additions || [])[x.addition - 1];
+      return `<li><span class="where">${a ? esc(E.KINDS[a.kind] || "Detail") + " · " : ""}${esc(v.sections[x.section].title)}, after sentence ${x.after}</span>
+        <span>${fmtPiece(v.sections[x.section].text.slice(x.start, x.end))}</span>${x.reason ? `<span class="why">${esc(x.reason)}</span>` : ""}</li>`;
+    }).join("");
+    const skipped = (v.skipped || []).map((s) => {
+      const a = (v.additions || [])[s.addition - 1];
+      return `<li><span class="where skip">Not added</span><span>${esc(a ? a.text : "Addition " + s.addition)}</span><span class="why">${esc(s.reason)}</span></li>`;
+    }).join("");
+    return items || skipped ? `<ul class="placements">${items}${skipped}</ul>` : "";
+  }
+
+  function renderDocVersion() {
+    const vs = docVersions();
+    const v = activeVersion();
+    if (!v) { $("#docResultCard").hidden = true; $("#docAddCard").hidden = true; return; }
+    $("#docResultCard").hidden = false;
+    const sel = $("#docVersion");
+    sel.innerHTML = vs.map((x, i) => `<option value="${i}" ${i === doc().active ? "selected" : ""}>${esc(versionName(x, i))}</option>`).join("");
+    $(".version-pick").hidden = vs.length < 2;
+    $("#docScript").innerHTML = versionHtml(v.sections, v.inserts);
+    $("#docPackaging").innerHTML =
+      (v.titles && v.titles.length ? `<h4>Title options</h4><ol>${v.titles.map((t) => `<li>${esc(t)}</li>`).join("")}</ol>` : "") +
+      (v.thumbnail ? `<h4>Thumbnail idea</h4><ul><li>${esc(v.thumbnail)}</li></ul>` : "");
+    const all = v.sections.map((x) => x.text).join("\n");
+    $("#docNicheAfter").innerHTML = nicheChecksHtml(all, "Niche checks (this version)");
+    $("#docSources").innerHTML = v.sources && v.sources.length ? `<h4>Sources to check</h4><ul>${v.sources.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : "";
+    $("#docChanges").innerHTML = v.changes && v.changes.length ? `<h4>What changed in the rewrite</h4><ul>${v.changes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>` : "";
+    const checks = all.match(/\[CHECK:/g);
+    if (checks) $("#docChanges").innerHTML += `<p class="notice">⚠ ${checks.length} fact(s) are marked “Check”. Verify them before you record.</p>`;
+    if (v.kind === "additions") {
+      $("#docAddedSummary").innerHTML = `<div class="added-sum">${v.verified ? '<span class="ok">✓ Original text unchanged.</span>' : '<span class="bad">⚠ Couldn\'t confirm the original text is unchanged.</span>'}
+        ${v.inserts.length} detail(s) added from v${(v.base || 0) + 1}${v.skipped && v.skipped.length ? `, ${v.skipped.length} not added` : ""}. New text is <mark class="added">highlighted</mark>.
+        ${placementsHtml(v)}</div>`;
+    } else $("#docAddedSummary").innerHTML = "";
+    ["#docOpen", "#docCopy", "#docAgain"].forEach((s) => ($(s).disabled = false));
+    const before = docAnalysis();
+    const after = A.analyze(v.sections, { wpm: doc().wpm });
+    const rows = [["Overall", "overall"], ["Hook", "hook"], ["Momentum", "momentum"], ["Clarity", "clarity"], ["Engagement", "engagement"]];
+    $("#docCompare").innerHTML = rows.map(([l, k]) => {
+      const diff = after.scores[k] - (before.empty ? 0 : before.scores[k]);
+      return `<div class="cmp">${l}: ${before.empty ? "–" : before.scores[k]} → <b class="${gradeClass(after.scores[k])}">${after.scores[k]}</b> ${diff ? `<span class="${diff > 0 ? "up" : "down"}">${diff > 0 ? "+" : ""}${diff}</span>` : ""}</div>`;
+    }).join("") + `<div class="cmp">Runtime: <b>${after.runtimeLabel}</b> · ${after.totalWords} words</div>`;
+    $("#docAddCard").hidden = false;
+    addPanel.doc.render();
+  }
+  $("#docVersion").addEventListener("change", (e) => { doc().active = +e.target.value; persist(); renderDocVersion(); });
+
+  /**
+   * A reusable "Add details" panel.
+   * cfg: { root, store() -> object holding .additionsDraft, base() -> {sections}, onApplied(result), intro, extra() -> html }
+   */
+  function makeAddPanel(cfg) {
+    let ctl = null;
+    const draft = () => {
+      const st = cfg.store();
+      if (!st.additionsDraft || !st.additionsDraft.length) st.additionsDraft = [{ kind: "fact", text: "", source: "", hint: "" }];
+      return st.additionsDraft;
+    };
+    function render() {
+      const root = cfg.root();
+      const rows = draft();
+      root.innerHTML = `
+        <h3><span>＋ Add details</span><span class="muted small">Facts, terms, details or quotes, placed in the right spots. Nothing already written gets reworded.</span></h3>
+        ${cfg.intro ? `<p class="muted small">${cfg.intro}</p>` : ""}
+        <div class="add-rows">${rows.map((r, i) => `
+          <div class="add-row" data-i="${i}">
+            <select data-f="kind" aria-label="Type of addition">${Object.entries(E.KINDS).map(([k, l]) => `<option value="${k}" ${k === r.kind ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+            <textarea data-f="text" rows="2" placeholder="${r.kind === "term" ? "e.g. dead drop" : r.kind === "quote" ? "The exact quote" : "e.g. Abel was arrested at the Hotel Latham on 21 June 1957"}">${esc(r.text)}</textarea>
+            <button class="btn icon" data-del="${i}" title="Remove">✕</button>
+            <div class="extra">
+              ${r.kind === "fact" || r.kind === "quote" ? `<input data-f="source" type="text" placeholder="Source (optional, e.g. FBI Vault)" value="${esc(r.source)}" />` : `<span></span>`}
+              <input data-f="hint" type="text" placeholder="Where should it go? (optional)" value="${esc(r.hint)}" />
+            </div>
+          </div>`).join("")}</div>
+        <div class="add-actions">
+          <button class="btn small" data-addrow>+ Add another</button>
+          <button class="btn primary" data-go>Insert into script</button>
+          <button class="btn" data-stop hidden>Stop</button>
+          <span class="muted small" data-status aria-live="polite"></span>
+        </div>
+        ${cfg.extra ? cfg.extra() : ""}`;
+      $$(".add-row", root).forEach((row) => {
+        const r = rows[+row.dataset.i];
+        $$("[data-f]", row).forEach((el) => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
+          r[el.dataset.f] = el.value; persist();
+          if (el.dataset.f === "kind") render();
+        }));
+      });
+      $$("[data-del]", root).forEach((b) => b.addEventListener("click", () => { rows.splice(+b.dataset.del, 1); persist(); render(); }));
+      $("[data-addrow]", root).addEventListener("click", () => { rows.push({ kind: "fact", text: "", source: "", hint: "" }); persist(); render(); $$("textarea[data-f=text]", root).pop().focus(); });
+      $("[data-go]", root).addEventListener("click", go);
+      $("[data-stop]", root).addEventListener("click", () => ctl && ctl.abort());
+      if (cfg.after) cfg.after(root);
+    }
+    const status = (msg) => { const el = $("[data-status]", cfg.root()); if (el) el.textContent = msg; };
+    async function go() {
+      const additions = draft().filter((r) => r.text.trim());
+      if (!additions.length) { status("Write at least one fact, term or detail first."); return; }
+      const base = cfg.base();
+      if (!base || !base.sections.some((s) => s.text.trim())) { status("There's no script to add to yet."); return; }
+      const fn = sampleFn || (await sampleReady);
+      if (!fn || typeof fn.json !== "function") { status("Adding details needs Claude. Open the app from its claude.ai link to use it."); return; }
+      const root = cfg.root();
+      ctl = new AbortController();
+      $("[data-go]", root).disabled = true; $("[data-stop]", root).hidden = false;
+      status("Finding the right spot for each detail… (usually 10–40 seconds)");
+      const sections = base.sections.map((s) => ({ title: s.title, text: s.text }));
+      try {
+        const raw = await fn.json(E.buildPrompt({ sections, additions, niche: niche() }), { signal: ctl.signal, cache: false });
+        const n = E.normalise(raw, sections, additions.length);
+        if (!n.placements.length) { status(n.skipped.length ? "Claude couldn't place these: " + n.skipped.map((s) => s.reason).join("; ") : "Nothing could be placed. Try rephrasing the details."); return; }
+        const res = E.apply(sections, n.placements);
+        const verified = E.verify(sections, res.sections, res.inserts);
+        cfg.store().additionsDraft = [{ kind: "fact", text: "", source: "", hint: "" }];
+        cfg.onApplied({ sections: res.sections, inserts: res.inserts, verified, skipped: n.skipped, sources: n.sources, additions });
+        persist();
+        toast(`${res.inserts.length} detail(s) added`);
+      } catch (e) {
+        status(e && e.code === "cancelled" ? "Stopped. Nothing was changed." : e && e.code === "invalid_json" ? "Couldn't read Claude's answer. Nothing was changed. Try again." : (ERR[e && e.code] || "Something went wrong. Nothing was changed. Try again."));
+      } finally {
+        const r2 = cfg.root();
+        if ($("[data-go]", r2)) { $("[data-go]", r2).disabled = false; $("[data-stop]", r2).hidden = true; }
+        ctl = null;
+      }
+    }
+    return { render };
+  }
+
+  const addPanel = {};
+  addPanel.doc = makeAddPanel({
+    root: () => $("#docAddCard"),
+    store: () => doc(),
+    base: () => activeVersion(),
+    intro: "Details are added to the version shown above. That version stays saved, and the result becomes a new version you can compare or switch back from.",
+    onApplied: (r) => {
+      const d = doc();
+      const base = activeVersion();
+      const vs = docVersions();
+      vs.push({
+        label: `+${r.inserts.length} detail${r.inserts.length === 1 ? "" : "s"}`, at: now(), kind: "additions", base: d.active,
+        sections: r.sections, inserts: r.inserts, verified: r.verified, skipped: r.skipped, additions: r.additions,
+        titles: base.titles, thumbnail: base.thumbnail, changes: [],
+        sources: (base.sources || []).concat(r.sources),
+      });
+      d.active = vs.length - 1;
+      renderDocVersion();
+      $("#docResultCard").scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+  });
+
+  // Write tab: same panel, with version history for the open script.
+  function projVersions(p) { if (!p.versions) p.versions = []; return p.versions; }
+  function snapshot(p) { return p.sections.map((s) => ({ title: s.title, text: s.text })); }
+  function sameAs(p, snap) { return snap.length === p.sections.length && snap.every((s, i) => s.text === p.sections[i].text && s.title === p.sections[i].title); }
+  addPanel.write = makeAddPanel({
+    root: () => $("#writeAddCard"),
+    store: () => cur(),
+    base: () => ({ sections: cur().sections }),
+    intro: "Details are inserted into the sections above. Your current text is saved as a version first, so you can always restore it.",
+    onApplied: (r) => {
+      const p = cur();
+      const vs = projVersions(p);
+      if (!vs.length || !sameAs(p, vs[vs.length - 1].sections)) vs.push({ label: vs.length ? "Before additions" : "Original", at: now(), sections: snapshot(p) });
+      r.sections.forEach((s, i) => { if (p.sections[i]) p.sections[i].text = s.text; });
+      vs.push({ label: `+${r.inserts.length} detail${r.inserts.length === 1 ? "" : "s"}`, at: now(), sections: snapshot(p), inserts: r.inserts, verified: r.verified, skipped: r.skipped, additions: r.additions, sources: r.sources });
+      p.lastAdd = vs.length - 1;
+      touch(); renderSections(); liveScore();
+      addPanel.write.render();
+    },
+    extra: () => {
+      const p = cur();
+      const vs = p.versions || [];
+      const last = p.lastAdd != null ? vs[p.lastAdd] : null;
+      let html = "";
+      if (last && last.inserts) {
+        html += `<div class="added-sum" style="margin-top:14px">${last.verified ? '<span class="ok">✓ Original text unchanged.</span>' : '<span class="bad">⚠ Couldn\'t confirm the original text is unchanged.</span>'} Last time, ${last.inserts.length} detail(s) were added (${esc(last.at)}).
+          ${placementsHtml(last)}
+          ${last.sources && last.sources.length ? `<p class="small" style="margin:8px 0 0"><b>Verify:</b> ${last.sources.map(esc).join(" · ")}</p>` : ""}
+          <div class="add-preview">${versionHtml(last.sections, last.inserts, true)}</div></div>`;
+      }
+      if (vs.length) {
+        html += `<details style="margin-top:12px"><summary>Version history (${vs.length})</summary><ul class="versions-list">${vs.map((v, i) => `<li><span>v${i + 1} · ${esc(v.label)} · ${esc(v.at)}</span><button class="btn small" data-restore="${i}" ${sameAs(p, v.sections) ? "disabled" : ""}>${sameAs(p, v.sections) ? "Current" : "Restore"}</button></li>`).join("")}</ul></details>`;
+      }
+      return html;
+    },
+    after: (root) => {
+      $$("[data-restore]", root).forEach((b) => b.addEventListener("click", async () => {
+        const p = cur();
+        const vs = projVersions(p);
+        const v = vs[+b.dataset.restore];
+        if (!(await askConfirm(`Restore v${+b.dataset.restore + 1} (${v.label})? Your current text is saved as a new version first.`, "Restore"))) return;
+        if (!vs.some((x) => sameAs(p, x.sections))) vs.push({ label: "Before restore", at: now(), sections: snapshot(p) });
+        p.sections = v.sections.map((s, i) => Object.assign({}, p.sections[i] || { id: uid(), purpose: "", prompts: [], pct: 10 }, { title: s.title, text: s.text }));
+        p.lastAdd = null;
+        touch(); renderSections(); liveScore(); addPanel.write.render();
+        toast("Restored v" + (+b.dataset.restore + 1));
+      }));
+    },
+  });
 
   // ------------------------------------------------------------------ NICHE
   const nicheOptions = NICHES.map((n) => `<option value="${n.id}">${esc(n.name)}</option>`).join("");
@@ -1013,6 +1270,8 @@
     if (d.isExample) { const ex = nicheExample(n); d.topic = ex.topic; d.text = ex.text; d.result = null; }
     persist();
   })();
+  window.__addPanelsReady = true;
+  addPanel.write.render();
   renderNiche();
   renderDoctor();
   renderHookTypes();
